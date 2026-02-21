@@ -1,6 +1,8 @@
 import "dart:io";
 
 class FolderPicker {
+  static bool get isSupported => Platform.isWindows;
+
   static Future<String?> pickDirectory() async {
     if (!Platform.isWindows) {
       return null;

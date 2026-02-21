@@ -18,6 +18,7 @@ class ControlServer {
   String? _token;
   int? _port;
 
+  bool get isSupported => true;
   bool get isRunning => _server != null;
   int? get port => _port;
   String? get token => _token;

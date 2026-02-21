@@ -15,6 +15,7 @@ class LlmControlPanel extends StatelessWidget {
     return AnimatedBuilder(
       animation: controller,
       builder: (context, _) {
+        final supported = controller.controlServerSupported;
         final running = controller.serverRunning;
         final port = controller.serverPort ?? 4049;
         final token = controller.serverToken ?? "(starting...)";
@@ -34,15 +35,19 @@ class LlmControlPanel extends StatelessWidget {
                       children: <Widget>[
                         running
                             ? FilledButton.tonal(
-                                onPressed: () async {
-                                  await controller.stopControlServer();
-                                },
+                                onPressed: !supported
+                                    ? null
+                                    : () async {
+                                        await controller.stopControlServer();
+                                      },
                                 child: const Text("Stop Server"),
                               )
                             : FilledButton(
-                                onPressed: () async {
-                                  await controller.startControlServer();
-                                },
+                                onPressed: !supported
+                                    ? null
+                                    : () async {
+                                        await controller.startControlServer();
+                                      },
                                 child: const Text("Start Server"),
                               ),
                         OutlinedButton(
@@ -54,9 +59,25 @@ class LlmControlPanel extends StatelessWidget {
                       ],
                     ),
                     const SizedBox(height: 8),
-                    Text("Status: ${running ? "running" : "stopped"}"),
-                    Text("Base URL: http://127.0.0.1:$port"),
-                    Text("Token: $token"),
+                    Text(
+                      supported
+                          ? "Status: ${running ? "running" : "stopped"}"
+                          : "Status: unavailable on web",
+                    ),
+                    Text(
+                      supported
+                          ? "Base URL: http://127.0.0.1:$port"
+                          : "Base URL: (local loopback server unsupported)",
+                    ),
+                    Text(
+                        supported ? "Token: $token" : "Token: (not available)"),
+                    if (!supported) ...<Widget>[
+                      const SizedBox(height: 8),
+                      Text(
+                        "Web mode does not allow opening a local socket server inside the app.",
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                    ],
                     const SizedBox(height: 12),
                     const Text("HTTP endpoints"),
                     const SizedBox(height: 4),
@@ -86,6 +107,12 @@ class LlmControlPanel extends StatelessWidget {
   }
 
   String _examples(int port, String token) {
+    if (!controller.controlServerSupported) {
+      return [
+        "Local control server is disabled on web.",
+        "Use desktop build to run /health, /render/preview, /canvas/patch.",
+      ].join("\n");
+    }
     return [
       "GET /health",
       "curl http://127.0.0.1:$port/health",

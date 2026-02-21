@@ -1,6 +1,6 @@
 # CanvasTalk Runtime Studio
 
-사람과 LLM이 같은 UI를 공유하기 위한 ASCII 캔버스 편집기 (Flutter Windows/Desktop).
+사람과 LLM이 같은 UI를 공유하기 위한 ASCII 캔버스 편집기 (Flutter Desktop/Web).
 
 ## 핵심 컨셉
 
@@ -53,6 +53,28 @@
 flutter pub get
 flutter run -d windows
 ```
+
+웹 실행:
+
+```bash
+flutter run -d chrome
+```
+
+## 웹 모드 제한
+
+웹에서는 캔버스 편집/렌더링은 가능하지만, 브라우저 보안 제약으로 일부 기능이 비활성화됩니다.
+
+- 로컬 Control API 서버(`127.0.0.1`) 실행 불가
+- 로컬 폴더 기반 `Save/Load` 불가
+- 폴더 선택기(Folder Picker) 불가
+
+즉, LLM 소켓(Control API) 연동과 파일 저장/로드는 데스크톱 빌드에서 사용해야 합니다.
+
+## GitHub Web 배포
+
+- 워크플로: `.github/workflows/deploy-web-pages.yml`
+- `master/main` push 시 `flutter build web` 후 GitHub Pages로 자동 배포
+- 저장소 Settings > Pages 에서 Source를 `GitHub Actions`로 설정해야 공개 URL이 활성화됩니다.
 
 ## 스킬 설치 (Codex)
 

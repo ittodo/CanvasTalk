@@ -9,10 +9,10 @@ import "../model/ui_project.dart";
 import "../services/ascii_renderer.dart";
 import "../services/component_expander.dart";
 import "../services/control_api.dart";
-import "../services/control_server.dart";
-import "../services/editor_config_storage.dart";
+import "../services/control_server_service.dart";
+import "../services/editor_config_storage_service.dart";
 import "../services/layout_engine.dart";
-import "../services/project_storage.dart";
+import "../services/project_storage_service.dart";
 import "../services/yaml_codec.dart";
 
 enum PointerEditMode {
@@ -192,12 +192,19 @@ class AppController extends ChangeNotifier implements ControlApi {
   bool get serverRunning => _server.isRunning;
   int? get serverPort => _server.port;
   String? get serverToken => _server.token;
+  bool get controlServerSupported => _server.isSupported;
+  bool get projectStorageSupported => _storage.isSupported;
 
   Future<void> initialize() async {
     await _loadEditorConfig();
     _yamlSource = _yamlCodec.encode(_project);
     _rebuild(baseDiagnostics: const <Diagnostic>[]);
-    await startControlServer();
+    if (_server.isSupported) {
+      await startControlServer();
+    } else {
+      _statusMessage = "Web mode: local control server is not available.";
+      notifyListeners();
+    }
   }
 
   @override
@@ -207,6 +214,12 @@ class AppController extends ChangeNotifier implements ControlApi {
   }
 
   Future<void> startControlServer({int port = 4049}) async {
+    if (!_server.isSupported) {
+      _statusMessage =
+          "Local control server is not supported on this platform.";
+      notifyListeners();
+      return;
+    }
     try {
       await _server.start(port: port);
       _statusMessage = "Control server started on localhost:${_server.port}";
@@ -217,6 +230,12 @@ class AppController extends ChangeNotifier implements ControlApi {
   }
 
   Future<void> stopControlServer() async {
+    if (!_server.isSupported) {
+      _statusMessage =
+          "Local control server is not supported on this platform.";
+      notifyListeners();
+      return;
+    }
     await _server.stop();
     _statusMessage = "Control server stopped.";
     notifyListeners();
@@ -702,6 +721,12 @@ class AppController extends ChangeNotifier implements ControlApi {
   }
 
   Future<bool> loadProjectFromPath(String rootPath) async {
+    if (!_storage.isSupported) {
+      _statusMessage =
+          "Project file load is not supported on this platform (web mode).";
+      notifyListeners();
+      return false;
+    }
     try {
       final source = await _storage.loadMainYaml(rootPath);
       final ok = await updateYamlFromEditor(source);
@@ -720,6 +745,12 @@ class AppController extends ChangeNotifier implements ControlApi {
   }
 
   Future<bool> saveProjectToPath(String rootPath) async {
+    if (!_storage.isSupported) {
+      _statusMessage =
+          "Project file save is not supported on this platform (web mode).";
+      notifyListeners();
+      return false;
+    }
     try {
       await _storage.saveProject(rootPath: rootPath, project: _project);
       _currentProjectPath = rootPath;
@@ -1724,8 +1755,10 @@ class AppController extends ChangeNotifier implements ControlApi {
     return <String, dynamic>{
       "ok": true,
       "server": "canvastalk-control",
+      "serverSupported": _server.isSupported,
       "port": _server.port,
       "token": _server.token,
+      "projectStorageSupported": _storage.isSupported,
       "selectedNodeId": _selectedNodeId,
       "activePageId": _project.activePageId,
       "pageCount": _project.pages.length,

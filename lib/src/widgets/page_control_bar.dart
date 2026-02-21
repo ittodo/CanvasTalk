@@ -1,7 +1,7 @@
 import "package:flutter/material.dart";
 
 import "../model/ui_page.dart";
-import "../services/folder_picker.dart";
+import "../services/folder_picker_service.dart";
 import "../state/app_controller.dart";
 
 class PageControlBar extends StatelessWidget {
@@ -17,6 +17,14 @@ class PageControlBar extends StatelessWidget {
     final currentPath = controller.currentProjectPath;
     final hasCurrentPath = currentPath != null && currentPath.trim().isNotEmpty;
     final recents = controller.recentProjectPaths;
+    final canSave = controller.projectStorageSupported &&
+        (hasCurrentPath || FolderPicker.isSupported);
+    final canSaveAs =
+        controller.projectStorageSupported && FolderPicker.isSupported;
+    final canLoad =
+        controller.projectStorageSupported && FolderPicker.isSupported;
+    final canLoadRecent =
+        controller.projectStorageSupported && recents.isNotEmpty;
     final zoomPercent = (controller.canvasZoom * 100).round();
     final activePage = controller.activePage;
     final standalonePreviewMode = controller.standaloneOverlayPreviewMode;
@@ -47,25 +55,25 @@ class PageControlBar extends StatelessWidget {
             child: Row(
               children: <Widget>[
                 FilledButton.icon(
-                  onPressed: () => _save(context),
+                  onPressed: canSave ? () => _save(context) : null,
                   icon: const Icon(Icons.save),
                   label: Text(hasCurrentPath ? "Save" : "Save As"),
                 ),
                 const SizedBox(width: 8),
                 OutlinedButton.icon(
-                  onPressed: () => _saveAs(context),
+                  onPressed: canSaveAs ? () => _saveAs(context) : null,
                   icon: const Icon(Icons.save_as_outlined),
                   label: const Text("Save As"),
                 ),
                 const SizedBox(width: 8),
                 OutlinedButton.icon(
-                  onPressed: () => _loadFromPicker(context),
+                  onPressed: canLoad ? () => _loadFromPicker(context) : null,
                   icon: const Icon(Icons.folder_open),
                   label: const Text("Load"),
                 ),
                 const SizedBox(width: 8),
                 PopupMenuButton<String>(
-                  enabled: recents.isNotEmpty,
+                  enabled: canLoadRecent,
                   tooltip: "Load Recent",
                   onSelected: (path) => _loadByPath(context, path),
                   itemBuilder: (context) {
@@ -168,9 +176,11 @@ class PageControlBar extends StatelessWidget {
                 SizedBox(
                   width: 420,
                   child: Text(
-                    hasCurrentPath
-                        ? "Project: $currentPath"
-                        : "Project: (unsaved)",
+                    !controller.projectStorageSupported
+                        ? "Project file I/O: disabled in web mode"
+                        : hasCurrentPath
+                            ? "Project: $currentPath"
+                            : "Project: (unsaved)",
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: Theme.of(context).textTheme.bodySmall,
@@ -343,6 +353,14 @@ class PageControlBar extends StatelessWidget {
   }
 
   Future<void> _loadFromPicker(BuildContext context) async {
+    if (!controller.projectStorageSupported || !FolderPicker.isSupported) {
+      await _showMessage(
+        context,
+        title: "Unavailable",
+        message: "Folder picker/load is not supported on this platform.",
+      );
+      return;
+    }
     final path = await FolderPicker.pickDirectory();
     if (!context.mounted || path == null || path.trim().isEmpty) {
       return;
@@ -396,6 +414,14 @@ class PageControlBar extends StatelessWidget {
   }
 
   Future<void> _saveAs(BuildContext context) async {
+    if (!controller.projectStorageSupported || !FolderPicker.isSupported) {
+      await _showMessage(
+        context,
+        title: "Unavailable",
+        message: "Save As via folder picker is not supported on this platform.",
+      );
+      return;
+    }
     final path = await FolderPicker.pickDirectory();
     if (!context.mounted || path == null || path.trim().isEmpty) {
       return;

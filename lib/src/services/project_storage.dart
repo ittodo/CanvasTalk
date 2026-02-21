@@ -9,6 +9,7 @@ class ProjectStorage {
   ProjectStorage(this._codec);
 
   final ProjectYamlCodec _codec;
+  bool get isSupported => true;
 
   Future<void> saveProject({
     required String rootPath,
