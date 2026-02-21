@@ -156,6 +156,39 @@ class AppController extends ChangeNotifier implements ControlApi {
     return output;
   }
 
+  String buildLlmMarkdownExport() {
+    final active = _project.activePage;
+    final activePageAscii = _renderEffectivePageAscii(
+      pageId: active.id,
+      source: _project,
+    );
+    final yaml = _yamlSource.trimRight();
+    final buffer = StringBuffer()
+      ..writeln("# ASCII UI Export")
+      ..writeln()
+      ..writeln("## Active Page")
+      ..writeln("- id: `${active.id}`")
+      ..writeln("- name: `${active.name}`")
+      ..writeln("- mode: `${active.mode.name}`")
+      ..writeln(
+          "- basePageId: `${(active.basePageId == null || active.basePageId!.trim().isEmpty) ? "-" : active.basePageId}`")
+      ..writeln(
+          "- canvas: `${_project.canvas.width} x ${_project.canvas.height}`")
+      ..writeln(
+          "- standalone overlay preview mode: `${_standaloneOverlayPreviewMode.name}`")
+      ..writeln()
+      ..writeln("## ASCII (Active Page Only)")
+      ..writeln("```text")
+      ..writeln(activePageAscii)
+      ..writeln("```")
+      ..writeln()
+      ..writeln("## YAML")
+      ..writeln("```yaml")
+      ..writeln(yaml)
+      ..writeln("```");
+    return buffer.toString();
+  }
+
   bool get serverRunning => _server.isRunning;
   int? get serverPort => _server.port;
   String? get serverToken => _server.token;
@@ -832,6 +865,93 @@ class AppController extends ChangeNotifier implements ControlApi {
         }
         setActivePageLlmComment(patch["comment"]?.toString() ?? "");
         _statusMessage = "Patch applied: set_page_comment '$pageId'.";
+        return true;
+      case "set_page_mode":
+        final pageId = patch["id"]?.toString() ?? _project.activePageId;
+        final modeRaw = patch["mode"]?.toString();
+        if (pageId.trim().isEmpty ||
+            modeRaw == null ||
+            modeRaw.trim().isEmpty) {
+          return false;
+        }
+        final normalizedMode = modeRaw.trim().toLowerCase();
+        if (normalizedMode != UiPageMode.standalone.name &&
+            normalizedMode != UiPageMode.overlay.name) {
+          return false;
+        }
+        if (!_project.pagesById.containsKey(pageId)) {
+          return false;
+        }
+        if (_project.activePageId != pageId) {
+          setActivePage(pageId, captureUndo: false);
+        }
+        final mode = pageModeFromString(normalizedMode);
+        final before = activePage.mode;
+        setActivePageMode(mode);
+        if (before == mode) {
+          _statusMessage = "Patch applied: set_page_mode '$pageId' unchanged.";
+        } else {
+          _statusMessage =
+              "Patch applied: set_page_mode '$pageId' -> '${mode.name}'.";
+        }
+        notifyListeners();
+        return true;
+      case "set_page_base":
+        final pageId = patch["id"]?.toString() ?? _project.activePageId;
+        if (pageId.trim().isEmpty || !_project.pagesById.containsKey(pageId)) {
+          return false;
+        }
+        final rawBase = patch.containsKey("basePageId")
+            ? patch["basePageId"]
+            : patch.containsKey("baseId")
+                ? patch["baseId"]
+                : patch["value"];
+        final baseId = rawBase?.toString().trim();
+        if (_project.activePageId != pageId) {
+          setActivePage(pageId, captureUndo: false);
+        }
+        if (baseId == null || baseId.isEmpty) {
+          if (activePage.mode == UiPageMode.overlay) {
+            setActivePageMode(UiPageMode.standalone);
+          }
+          _statusMessage = "Patch applied: set_page_base '$pageId' cleared.";
+          notifyListeners();
+          return true;
+        }
+        if (baseId == pageId || !_project.pagesById.containsKey(baseId)) {
+          return false;
+        }
+        if (activePage.mode != UiPageMode.overlay) {
+          setActivePageMode(UiPageMode.overlay);
+          if (activePage.mode != UiPageMode.overlay) {
+            return false;
+          }
+        }
+        setActivePageBasePage(baseId);
+        if (activePage.basePageId != baseId) {
+          return false;
+        }
+        _statusMessage = "Patch applied: set_page_base '$pageId' -> '$baseId'.";
+        notifyListeners();
+        return true;
+      case "set_standalone_overlay_preview_mode":
+        final modeRaw = patch["mode"]?.toString();
+        if (modeRaw == null || modeRaw.trim().isEmpty) {
+          return false;
+        }
+        final normalized = modeRaw.trim().toLowerCase();
+        final valid = normalized == "one_level" ||
+            normalized == "onelevel" ||
+            normalized == "full_tree" ||
+            normalized == "fulltree";
+        if (!valid) {
+          return false;
+        }
+        final mode = standaloneOverlayPreviewModeFromString(normalized);
+        setStandaloneOverlayPreviewMode(mode);
+        _statusMessage =
+            "Patch applied: set_standalone_overlay_preview_mode '${mode.name}'.";
+        notifyListeners();
         return true;
       default:
         return false;

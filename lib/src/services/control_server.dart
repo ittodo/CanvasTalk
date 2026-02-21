@@ -134,6 +134,16 @@ class ControlServer {
             },
           );
       }
+    } on FormatException catch (error) {
+      await _writeJson(
+        request.response,
+        HttpStatus.badRequest,
+        <String, dynamic>{
+          "ok": false,
+          "error": "bad_request",
+          "message": error.message,
+        },
+      );
     } catch (error) {
       await _writeJson(
         request.response,

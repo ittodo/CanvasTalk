@@ -24,18 +24,46 @@ class AsciiOutputPanel extends StatelessWidget {
             children: <Widget>[
               Padding(
                 padding: const EdgeInsets.all(8),
-                child: FilledButton.icon(
-                  onPressed: () async {
-                    await Clipboard.setData(ClipboardData(text: controller.asciiOutput));
-                    if (!context.mounted) {
-                      return;
-                    }
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text("ASCII copied to clipboard.")),
-                    );
-                  },
-                  icon: const Icon(Icons.content_copy),
-                  label: const Text("Copy ASCII"),
+                child: Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: <Widget>[
+                    FilledButton.icon(
+                      onPressed: () async {
+                        await Clipboard.setData(
+                            ClipboardData(text: controller.asciiOutput));
+                        if (!context.mounted) {
+                          return;
+                        }
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                              content: Text("ASCII copied to clipboard.")),
+                        );
+                      },
+                      icon: const Icon(Icons.content_copy),
+                      label: const Text("Copy ASCII"),
+                    ),
+                    OutlinedButton.icon(
+                      onPressed: () async {
+                        await Clipboard.setData(
+                          ClipboardData(
+                            text: controller.buildLlmMarkdownExport(),
+                          ),
+                        );
+                        if (!context.mounted) {
+                          return;
+                        }
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text(
+                                "Markdown (active-page ASCII + YAML) copied."),
+                          ),
+                        );
+                      },
+                      icon: const Icon(Icons.description_outlined),
+                      label: const Text("Copy Markdown"),
+                    ),
+                  ],
                 ),
               ),
               Expanded(
@@ -48,7 +76,10 @@ class AsciiOutputPanel extends StatelessWidget {
                         controller.asciiOutput,
                         style: const TextStyle(
                           fontFamily: "Consolas",
-                          fontFamilyFallback: <String>["Courier New", "monospace"],
+                          fontFamilyFallback: <String>[
+                            "Courier New",
+                            "monospace"
+                          ],
                           fontSize: 13,
                           color: Color(0xFFF7F7F7),
                           height: 1.0,
