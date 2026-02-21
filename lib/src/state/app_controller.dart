@@ -20,6 +20,33 @@ enum PointerEditMode {
   resize,
 }
 
+enum StandaloneOverlayPreviewMode {
+  oneLevel,
+  fullTree,
+}
+
+StandaloneOverlayPreviewMode standaloneOverlayPreviewModeFromString(
+    String? value) {
+  switch ((value ?? "").trim().toLowerCase()) {
+    case "full_tree":
+    case "fulltree":
+      return StandaloneOverlayPreviewMode.fullTree;
+    case "one_level":
+    case "onelevel":
+    default:
+      return StandaloneOverlayPreviewMode.oneLevel;
+  }
+}
+
+String standaloneOverlayPreviewModeToString(StandaloneOverlayPreviewMode mode) {
+  switch (mode) {
+    case StandaloneOverlayPreviewMode.fullTree:
+      return "full_tree";
+    case StandaloneOverlayPreviewMode.oneLevel:
+      return "one_level";
+  }
+}
+
 class NodeHierarchyItem {
   NodeHierarchyItem({
     required this.id,
@@ -60,12 +87,16 @@ class AppController extends ChangeNotifier implements ControlApi {
   String _statusMessage = "Initializing...";
   String? _selectedNodeId;
   String? _currentProjectPath;
+  double _canvasZoom = 1.0;
   List<String> _recentProjectPaths = <String>[];
   PointerEditMode _pointerEditMode = PointerEditMode.move;
+  StandaloneOverlayPreviewMode _standaloneOverlayPreviewMode =
+      StandaloneOverlayPreviewMode.oneLevel;
 
   List<Diagnostic> _diagnostics = <Diagnostic>[];
   List<LayoutNode> _layoutNodes = <LayoutNode>[];
   Map<String, LayoutNode> _layoutById = <String, LayoutNode>{};
+  List<RectI> _asciiBoardRegions = <RectI>[];
   final List<_EditorSnapshot> _undoStack = <_EditorSnapshot>[];
   final List<_EditorSnapshot> _redoStack = <_EditorSnapshot>[];
   bool _pointerSessionActive = false;
@@ -78,18 +109,23 @@ class AppController extends ChangeNotifier implements ControlApi {
   String get statusMessage => _statusMessage;
   String? get selectedNodeId => _selectedNodeId;
   String? get currentProjectPath => _currentProjectPath;
+  double get canvasZoom => _canvasZoom;
   List<String> get recentProjectPaths =>
       List<String>.unmodifiable(_recentProjectPaths);
   List<UiPage> get pages => List<UiPage>.unmodifiable(_project.pages);
   String get activePageId => _project.activePageId;
   UiPage get activePage => _project.activePage;
   PointerEditMode get pointerEditMode => _pointerEditMode;
+  StandaloneOverlayPreviewMode get standaloneOverlayPreviewMode =>
+      _standaloneOverlayPreviewMode;
   List<Diagnostic> get diagnostics =>
       List<Diagnostic>.unmodifiable(_diagnostics);
   List<LayoutNode> get layoutNodes =>
       List<LayoutNode>.unmodifiable(_layoutNodes);
   Map<String, LayoutNode> get layoutById =>
       Map<String, LayoutNode>.unmodifiable(_layoutById);
+  List<RectI> get asciiBoardRegions =>
+      List<RectI>.unmodifiable(_asciiBoardRegions);
   bool get canUndo => _undoStack.isNotEmpty;
   bool get canRedo => _redoStack.isNotEmpty;
   List<NodeHierarchyItem> get nodeHierarchy {
@@ -198,6 +234,64 @@ class AppController extends ChangeNotifier implements ControlApi {
     _commitAndRebuild();
   }
 
+  void setActivePageMode(UiPageMode mode) {
+    final active = _project.activePage;
+    if (active.mode == mode) {
+      return;
+    }
+
+    if (mode == UiPageMode.overlay &&
+        _firstBaseCandidateFor(active.id) == null) {
+      _statusMessage = "Overlay mode needs at least one other page.";
+      notifyListeners();
+      return;
+    }
+
+    _captureUndoIfNeeded(true);
+    active.mode = mode;
+    if (mode == UiPageMode.standalone) {
+      active.basePageId = null;
+    } else {
+      active.basePageId ??= _firstBaseCandidateFor(active.id);
+    }
+    _statusMessage = "Set page mode to '${mode.name}'.";
+    _commitAndRebuild();
+  }
+
+  void setActivePageBasePage(String? pageId) {
+    final active = _project.activePage;
+    if (active.mode != UiPageMode.overlay) {
+      return;
+    }
+    final normalized = pageId?.trim();
+    if (normalized == null || normalized.isEmpty) {
+      if (active.mode == UiPageMode.standalone && active.basePageId == null) {
+        return;
+      }
+      _captureUndoIfNeeded(true);
+      active.mode = UiPageMode.standalone;
+      active.basePageId = null;
+      _statusMessage = "Overlay disabled (switched to standalone).";
+      _commitAndRebuild();
+      return;
+    }
+    if (normalized == active.id) {
+      return;
+    }
+    final exists = _project.pages.any((page) => page.id == normalized);
+    if (!exists) {
+      return;
+    }
+    if (active.basePageId == normalized) {
+      return;
+    }
+
+    _captureUndoIfNeeded(true);
+    active.basePageId = normalized;
+    _statusMessage = "Set overlay base page to '$normalized'.";
+    _commitAndRebuild();
+  }
+
   void addPage({String? name}) {
     _captureUndoIfNeeded(true);
     final pageId = _nextPageId("page");
@@ -263,6 +357,12 @@ class AppController extends ChangeNotifier implements ControlApi {
       return;
     }
     _project.pages.removeAt(removeIndex);
+    for (final page in _project.pages) {
+      if (page.basePageId == removedId) {
+        page.mode = UiPageMode.standalone;
+        page.basePageId = null;
+      }
+    }
     final nextIndex = removeIndex == 0 ? 0 : removeIndex - 1;
     _project.activePageId = _project.pages[nextIndex].id;
     _selectedNodeId = null;
@@ -284,6 +384,67 @@ class AppController extends ChangeNotifier implements ControlApi {
         ? "Pointer mode: Move (Q)"
         : "Pointer mode: Size (W)";
     notifyListeners();
+  }
+
+  void setStandaloneOverlayPreviewMode(StandaloneOverlayPreviewMode mode) {
+    if (_standaloneOverlayPreviewMode == mode) {
+      return;
+    }
+    _standaloneOverlayPreviewMode = mode;
+    _statusMessage = mode == StandaloneOverlayPreviewMode.fullTree
+        ? "Standalone overlay preview: full tree"
+        : "Standalone overlay preview: 1 level";
+    _rebuild(baseDiagnostics: _yamlCodec.validateOnly(_yamlSource));
+    unawaited(
+      _configStorage.updateStandaloneOverlayPreviewMode(
+        standaloneOverlayPreviewModeToString(mode),
+      ),
+    );
+  }
+
+  void setCanvasZoom(double zoom) {
+    final clamped = zoom.clamp(0.5, 3.0).toDouble();
+    if ((clamped - _canvasZoom).abs() < 0.001) {
+      return;
+    }
+    _canvasZoom = clamped;
+    _statusMessage = "Canvas zoom: ${(_canvasZoom * 100).round()}% (view only)";
+    notifyListeners();
+  }
+
+  void zoomInCanvasView() => setCanvasZoom(_canvasZoom + 0.1);
+  void zoomOutCanvasView() => setCanvasZoom(_canvasZoom - 0.1);
+  void resetCanvasZoom() => setCanvasZoom(1.0);
+
+  void scaleProject(double factor) {
+    if (factor <= 0) {
+      return;
+    }
+    _captureUndoIfNeeded(true);
+
+    _project.canvas.width =
+        _clampInt((_project.canvas.width * factor).round(), 1, 10000);
+    _project.canvas.height =
+        _clampInt((_project.canvas.height * factor).round(), 1, 10000);
+
+    void scaleNodes(List<UiNode> nodes) {
+      for (final node in nodes) {
+        node.x = (node.x * factor).round();
+        node.y = (node.y * factor).round();
+        node.width =
+            _clampInt((node.width * factor).round(), 1, _project.canvas.width);
+        node.height = _clampInt(
+            (node.height * factor).round(), 1, _project.canvas.height);
+        scaleNodes(node.children);
+      }
+    }
+
+    for (final page in _project.pages) {
+      scaleNodes(page.nodes);
+    }
+
+    _statusMessage = "Scaled project by ${(factor * 100).round()}%.";
+    _commitAndRebuild();
   }
 
   void beginPointerAdjustSession() {
@@ -489,8 +650,12 @@ class AppController extends ChangeNotifier implements ControlApi {
     try {
       final config = await _configStorage.load();
       _recentProjectPaths = config.recentProjects;
+      _standaloneOverlayPreviewMode = standaloneOverlayPreviewModeFromString(
+        config.standaloneOverlayPreviewMode,
+      );
     } catch (_) {
       _recentProjectPaths = <String>[];
+      _standaloneOverlayPreviewMode = StandaloneOverlayPreviewMode.oneLevel;
     }
   }
 
@@ -707,8 +872,8 @@ class AppController extends ChangeNotifier implements ControlApi {
   }
 
   void _rebuild({required List<Diagnostic> baseDiagnostics}) {
-    final expanded =
-        _expander.expandAll(_project.nodes.map((e) => e.copy()).toList());
+    final effectiveNodes = _effectiveNodesForPage(_project.activePageId);
+    final expanded = _expander.expandAll(effectiveNodes);
     final layout = _layoutEngine.compute(
       nodes: expanded,
       canvasWidth: _project.canvas.width,
@@ -717,15 +882,386 @@ class AppController extends ChangeNotifier implements ControlApi {
 
     _layoutNodes = layout.nodes;
     _layoutById = layout.byId;
-    _asciiOutput = _renderer.render(
+    final baseAscii = _renderer.render(
       canvas: _project.canvas,
       nodes: _layoutNodes,
     );
+    final activePage = _project.activePage;
+    final includeAllDescendants = activePage.mode == UiPageMode.standalone &&
+        _standaloneOverlayPreviewMode == StandaloneOverlayPreviewMode.fullTree;
+    final hasOverlayChildren = _hasOverlayChildren(
+      pageId: activePage.id,
+      source: _project,
+    );
+    if (hasOverlayChildren) {
+      final composite = _composeAsciiWithOverlayPreviews(
+        baseAscii: baseAscii,
+        basePage: activePage,
+        source: _project,
+        includeAllDescendants: includeAllDescendants,
+      );
+      _asciiOutput = composite.ascii;
+      _asciiBoardRegions = composite.boardRegions;
+    } else {
+      _asciiOutput = baseAscii;
+      _asciiBoardRegions = <RectI>[
+        RectI(
+          x: 0,
+          y: 0,
+          width: _project.canvas.width,
+          height: _project.canvas.height,
+        ),
+      ];
+    }
     _diagnostics = <Diagnostic>[
       ...baseDiagnostics,
       ...layout.diagnostics,
     ];
     notifyListeners();
+  }
+
+  List<UiNode> _effectiveNodesForPage(
+    String pageId, {
+    UiProject? project,
+  }) {
+    final source = project ?? _project;
+    UiPage? target;
+    for (final page in source.pages) {
+      if (page.id == pageId) {
+        target = page;
+        break;
+      }
+    }
+    target ??= source.pages.isEmpty ? null : source.pages.first;
+    if (target == null) {
+      return <UiNode>[];
+    }
+
+    final output = <UiNode>[];
+
+    void append(UiPage page, Set<String> stack) {
+      if (stack.contains(page.id)) {
+        return;
+      }
+      stack.add(page.id);
+
+      if (page.mode == UiPageMode.overlay &&
+          page.basePageId != null &&
+          page.basePageId!.trim().isNotEmpty) {
+        final base = source.pagesById[page.basePageId];
+        if (base != null) {
+          append(base, stack);
+        }
+      }
+
+      output.addAll(page.nodes.map((e) => e.copy()));
+      stack.remove(page.id);
+    }
+
+    append(target, <String>{});
+    return output;
+  }
+
+  _AsciiCompositeResult _composeAsciiWithOverlayPreviews({
+    required String baseAscii,
+    required UiPage basePage,
+    required UiProject source,
+    required bool includeAllDescendants,
+  }) {
+    final mainBoard = RectI(
+      x: 0,
+      y: 0,
+      width: source.canvas.width,
+      height: source.canvas.height,
+    );
+    final pageOrderById = _pageOrderById(source);
+    final roots = _overlayChildrenOf(
+      baseId: basePage.id,
+      source: source,
+      pageOrderById: pageOrderById,
+    );
+    const columnGap = 12;
+    const laneGap = 8;
+    const headerHeight = 1;
+    const headerBodyGap = 1;
+    const rowGap = 3;
+    const indentCap = 6;
+    final pageWidth = source.canvas.width;
+    final pageHeight = source.canvas.height;
+    const bodyY = headerHeight + headerBodyGap;
+    final tileHeight = bodyY + pageHeight;
+    if (roots.isEmpty) {
+      return _AsciiCompositeResult(
+        ascii: baseAscii,
+        boardRegions: <RectI>[mainBoard],
+      );
+    }
+
+    final lanes = <List<_OverlayPreviewEntry>>[];
+    for (final root in roots) {
+      if (includeAllDescendants) {
+        final entries = _collectOverlayLaneEntries(
+          root: root,
+          source: source,
+          pageOrderById: pageOrderById,
+        );
+        if (entries.isNotEmpty) {
+          lanes.add(entries);
+        }
+      } else {
+        lanes.add(
+          <_OverlayPreviewEntry>[
+            _OverlayPreviewEntry(page: root, depth: 0),
+          ],
+        );
+      }
+    }
+    if (lanes.isEmpty) {
+      return _AsciiCompositeResult(
+        ascii: baseAscii,
+        boardRegions: <RectI>[mainBoard],
+      );
+    }
+
+    var maxLaneHeight = 0;
+    for (final lane in lanes) {
+      final laneHeight = lane.length * tileHeight + (lane.length - 1) * rowGap;
+      if (laneHeight > maxLaneHeight) {
+        maxLaneHeight = laneHeight;
+      }
+    }
+
+    final previewStartX = pageWidth + columnGap;
+    final previewWidth =
+        lanes.length * pageWidth + (lanes.length - 1) * laneGap;
+    final outputWidth = pageWidth + columnGap + previewWidth;
+    final outputHeight =
+        pageHeight > maxLaneHeight ? pageHeight : maxLaneHeight;
+    final boardRegions = <RectI>[mainBoard];
+    final grid = List<List<String>>.generate(
+      outputHeight,
+      (_) => List<String>.filled(outputWidth, " "),
+    );
+
+    _blitAscii(
+      grid: grid,
+      ascii: baseAscii,
+      dstX: 0,
+      dstY: 0,
+      maxWidth: pageWidth,
+      maxHeight: pageHeight,
+    );
+
+    for (var laneIndex = 0; laneIndex < lanes.length; laneIndex++) {
+      final laneX = previewStartX + laneIndex * (pageWidth + laneGap);
+      final lane = lanes[laneIndex];
+      for (var rowIndex = 0; rowIndex < lane.length; rowIndex++) {
+        final entry = lane[rowIndex];
+        final slotY = rowIndex * (tileHeight + rowGap);
+        final header = includeAllDescendants
+            ? () {
+                final visualDepth =
+                    entry.depth > indentCap ? indentCap : entry.depth;
+                final indent = List<String>.filled(visualDepth, "  ").join();
+                return "[overlay d${entry.depth + 1}] $indent${entry.page.name}";
+              }()
+            : "[overlay] ${entry.page.name}";
+        _blitText(
+          grid: grid,
+          text: header,
+          x: laneX,
+          y: slotY,
+          maxWidth: pageWidth,
+        );
+        final overlayAscii = _renderEffectivePageAscii(
+          pageId: entry.page.id,
+          source: source,
+        );
+        _blitAscii(
+          grid: grid,
+          ascii: overlayAscii,
+          dstX: laneX,
+          dstY: slotY + bodyY,
+          maxWidth: pageWidth,
+          maxHeight: pageHeight,
+        );
+        boardRegions.add(
+          RectI(
+            x: laneX,
+            y: slotY + bodyY,
+            width: pageWidth,
+            height: pageHeight,
+          ),
+        );
+      }
+    }
+
+    return _AsciiCompositeResult(
+      ascii: grid.map((line) => line.join()).join("\n"),
+      boardRegions: boardRegions,
+    );
+  }
+
+  List<UiPage> _overlayChildrenOf({
+    required String baseId,
+    required UiProject source,
+    required Map<String, int> pageOrderById,
+  }) {
+    final children = source.pages
+        .where(
+          (page) =>
+              page.mode == UiPageMode.overlay &&
+              page.basePageId != null &&
+              page.basePageId!.trim() == baseId,
+        )
+        .toList();
+    children.sort(
+      (a, b) => _compareOverlayPreviewOrder(
+        a,
+        b,
+        pageOrderById,
+      ),
+    );
+    return children;
+  }
+
+  List<_OverlayPreviewEntry> _collectOverlayLaneEntries({
+    required UiPage root,
+    required UiProject source,
+    required Map<String, int> pageOrderById,
+  }) {
+    final output = <_OverlayPreviewEntry>[];
+    final stack = <String>{};
+
+    void visit(UiPage page, int depth) {
+      if (!stack.add(page.id)) {
+        return;
+      }
+      output.add(_OverlayPreviewEntry(page: page, depth: depth));
+      final children = _overlayChildrenOf(
+        baseId: page.id,
+        source: source,
+        pageOrderById: pageOrderById,
+      );
+      for (final child in children) {
+        visit(child, depth + 1);
+      }
+      stack.remove(page.id);
+    }
+
+    visit(root, 0);
+    return output;
+  }
+
+  Map<String, int> _pageOrderById(UiProject source) {
+    final output = <String, int>{};
+    for (var i = 0; i < source.pages.length; i++) {
+      output[source.pages[i].id] = i;
+    }
+    return output;
+  }
+
+  int _compareOverlayPreviewOrder(
+    UiPage a,
+    UiPage b,
+    Map<String, int> pageOrderById,
+  ) {
+    final aOrder = a.previewOrder;
+    final bOrder = b.previewOrder;
+    if (aOrder != null && bOrder != null && aOrder != bOrder) {
+      return aOrder.compareTo(bOrder);
+    }
+    if (aOrder != null && bOrder == null) {
+      return -1;
+    }
+    if (aOrder == null && bOrder != null) {
+      return 1;
+    }
+    final aIndex = pageOrderById[a.id] ?? 1 << 20;
+    final bIndex = pageOrderById[b.id] ?? 1 << 20;
+    if (aIndex != bIndex) {
+      return aIndex.compareTo(bIndex);
+    }
+    return a.id.compareTo(b.id);
+  }
+
+  bool _hasOverlayChildren({
+    required String pageId,
+    required UiProject source,
+  }) {
+    for (final page in source.pages) {
+      if (page.mode != UiPageMode.overlay) {
+        continue;
+      }
+      if (page.basePageId?.trim() == pageId) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  String _renderEffectivePageAscii({
+    required String pageId,
+    required UiProject source,
+  }) {
+    final effectiveNodes = _effectiveNodesForPage(pageId, project: source);
+    final expanded = _expander.expandAll(effectiveNodes);
+    final layout = _layoutEngine.compute(
+      nodes: expanded,
+      canvasWidth: source.canvas.width,
+      canvasHeight: source.canvas.height,
+    );
+    return _renderer.render(
+      canvas: source.canvas,
+      nodes: layout.nodes,
+    );
+  }
+
+  void _blitAscii({
+    required List<List<String>> grid,
+    required String ascii,
+    required int dstX,
+    required int dstY,
+    required int maxWidth,
+    required int maxHeight,
+  }) {
+    final lines = ascii.split("\n");
+    final visibleRows = lines.length < maxHeight ? lines.length : maxHeight;
+    for (var row = 0; row < visibleRows; row++) {
+      final line = lines[row];
+      final visibleCols = line.length < maxWidth ? line.length : maxWidth;
+      for (var col = 0; col < visibleCols; col++) {
+        final y = dstY + row;
+        final x = dstX + col;
+        if (y < 0 || y >= grid.length) {
+          continue;
+        }
+        if (x < 0 || x >= grid[y].length) {
+          continue;
+        }
+        grid[y][x] = line[col];
+      }
+    }
+  }
+
+  void _blitText({
+    required List<List<String>> grid,
+    required String text,
+    required int x,
+    required int y,
+    required int maxWidth,
+  }) {
+    if (y < 0 || y >= grid.length) {
+      return;
+    }
+    final limit = text.length < maxWidth ? text.length : maxWidth;
+    for (var i = 0; i < limit; i++) {
+      final col = x + i;
+      if (col < 0 || col >= grid[y].length) {
+        continue;
+      }
+      grid[y][col] = text[i];
+    }
   }
 
   UiNode _defaultNodeFor(NodeKind kind) {
@@ -1022,6 +1558,15 @@ class AppController extends ChangeNotifier implements ControlApi {
     }
   }
 
+  String? _firstBaseCandidateFor(String activePageId) {
+    for (final page in _project.pages) {
+      if (page.id != activePageId) {
+        return page.id;
+      }
+    }
+    return null;
+  }
+
   String _nextUniquePageName(String base, {String? excludePageId}) {
     final seed = base.trim().isEmpty ? "Page" : base.trim();
     if (!_pageNameExists(seed, excludePageId: excludePageId)) {
@@ -1066,6 +1611,9 @@ class AppController extends ChangeNotifier implements ControlApi {
       "pageCount": _project.pages.length,
       "currentProjectPath": _currentProjectPath,
       "recentProjectCount": _recentProjectPaths.length,
+      "canvasZoom": _canvasZoom,
+      "standaloneOverlayPreviewMode":
+          standaloneOverlayPreviewModeToString(_standaloneOverlayPreviewMode),
       "diagnosticCount": _diagnostics.length,
     };
   }
@@ -1103,17 +1651,34 @@ class AppController extends ChangeNotifier implements ControlApi {
       };
     }
 
-    final expanded = _expander
-        .expandAll(decoded.project!.nodes.map((e) => e.copy()).toList());
+    final previewNodes = _effectiveNodesForPage(
+      decoded.project!.activePageId,
+      project: decoded.project!,
+    );
+    final expanded = _expander.expandAll(previewNodes);
     final layout = _layoutEngine.compute(
       nodes: expanded,
       canvasWidth: decoded.project!.canvas.width,
       canvasHeight: decoded.project!.canvas.height,
     );
-    final ascii = _renderer.render(
+    final baseAscii = _renderer.render(
       canvas: decoded.project!.canvas,
       nodes: layout.nodes,
     );
+    final activePage = decoded.project!.activePage;
+    final includeAllDescendants = activePage.mode == UiPageMode.standalone &&
+        _standaloneOverlayPreviewMode == StandaloneOverlayPreviewMode.fullTree;
+    final ascii = _hasOverlayChildren(
+      pageId: activePage.id,
+      source: decoded.project!,
+    )
+        ? _composeAsciiWithOverlayPreviews(
+            baseAscii: baseAscii,
+            basePage: activePage,
+            source: decoded.project!,
+            includeAllDescendants: includeAllDescendants,
+          ).ascii
+        : baseAscii;
     return <String, dynamic>{
       "ok": true,
       "ascii": ascii,
@@ -1167,4 +1732,24 @@ class _EditorSnapshot {
 
   final UiProject project;
   final String? selectedNodeId;
+}
+
+class _AsciiCompositeResult {
+  _AsciiCompositeResult({
+    required this.ascii,
+    required this.boardRegions,
+  });
+
+  final String ascii;
+  final List<RectI> boardRegions;
+}
+
+class _OverlayPreviewEntry {
+  _OverlayPreviewEntry({
+    required this.page,
+    required this.depth,
+  });
+
+  final UiPage page;
+  final int depth;
 }

@@ -3,14 +3,11 @@ import "package:flutter/services.dart";
 
 import "state/app_controller.dart";
 import "widgets/ascii_canvas.dart";
-import "widgets/ascii_output_panel.dart";
 import "widgets/component_palette.dart";
-import "widgets/diagnostics_panel.dart";
 import "widgets/inspector_panel.dart";
-import "widgets/llm_control_panel.dart";
 import "widgets/page_control_bar.dart";
-import "widgets/yaml_editor_panel.dart";
 import "widgets/yaml_hierarchy_panel.dart";
+import "widgets/workbench_panels_page.dart";
 
 class AppShell extends StatelessWidget {
   const AppShell({
@@ -70,6 +67,16 @@ class AppShell extends StatelessWidget {
                     ),
                   ),
                   actions: <Widget>[
+                    IconButton(
+                      tooltip: "Open Output Panels",
+                      onPressed: () => Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) =>
+                              WorkbenchPanelsPage(controller: controller),
+                        ),
+                      ),
+                      icon: const Icon(Icons.dashboard_customize_outlined),
+                    ),
                     IconButton(
                       tooltip: "Undo (Ctrl+Z)",
                       onPressed: controller.canUndo ? controller.undo : null,
@@ -135,34 +142,6 @@ class AppShell extends StatelessWidget {
                             ),
                           );
                         },
-                      ),
-                    ),
-                    SizedBox(
-                      height: 280,
-                      child: DefaultTabController(
-                        length: 4,
-                        child: Column(
-                          children: <Widget>[
-                            const TabBar(
-                              tabs: <Tab>[
-                                Tab(text: "ASCII"),
-                                Tab(text: "YAML"),
-                                Tab(text: "Diagnostics"),
-                                Tab(text: "LLM Control"),
-                              ],
-                            ),
-                            Expanded(
-                              child: TabBarView(
-                                children: <Widget>[
-                                  AsciiOutputPanel(controller: controller),
-                                  YamlEditorPanel(controller: controller),
-                                  DiagnosticsPanel(controller: controller),
-                                  LlmControlPanel(controller: controller),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
                       ),
                     ),
                   ],

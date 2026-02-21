@@ -6,9 +6,11 @@ import "package:path/path.dart" as p;
 class EditorConfig {
   EditorConfig({
     List<String>? recentProjects,
+    this.standaloneOverlayPreviewMode = "one_level",
   }) : recentProjects = recentProjects ?? <String>[];
 
   final List<String> recentProjects;
+  final String standaloneOverlayPreviewMode;
 
   factory EditorConfig.fromMap(Map<String, dynamic> map) {
     final rawRecent = map["recentProjects"];
@@ -21,12 +23,17 @@ class EditorConfig {
         }
       }
     }
-    return EditorConfig(recentProjects: recent);
+    return EditorConfig(
+      recentProjects: recent,
+      standaloneOverlayPreviewMode:
+          map["standaloneOverlayPreviewMode"]?.toString() ?? "one_level",
+    );
   }
 
   Map<String, dynamic> toMap() {
     return <String, dynamic>{
       "recentProjects": recentProjects,
+      "standaloneOverlayPreviewMode": standaloneOverlayPreviewMode,
     };
   }
 }
@@ -85,7 +92,21 @@ class EditorConfigStorage {
     ];
 
     final limited = next.take(maxRecentProjects).toList();
-    final updated = EditorConfig(recentProjects: limited);
+    final updated = EditorConfig(
+      recentProjects: limited,
+      standaloneOverlayPreviewMode: current.standaloneOverlayPreviewMode,
+    );
+    await save(updated);
+    return updated;
+  }
+
+  Future<EditorConfig> updateStandaloneOverlayPreviewMode(String mode) async {
+    final normalized = mode.trim().isEmpty ? "one_level" : mode.trim();
+    final current = await load();
+    final updated = EditorConfig(
+      recentProjects: current.recentProjects,
+      standaloneOverlayPreviewMode: normalized,
+    );
     await save(updated);
     return updated;
   }

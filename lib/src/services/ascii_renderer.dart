@@ -39,11 +39,15 @@ class AsciiRenderer {
           );
           break;
         case NodeKind.line:
-          final orientation = (node.props["orientation"] ?? "horizontal").toString().toLowerCase();
+          final orientation = (node.props["orientation"] ?? "horizontal")
+              .toString()
+              .toLowerCase();
           if (orientation == "vertical") {
-            _drawVLine(grid, node.rect.x, node.rect.y, node.rect.height, charset.v);
+            _drawVLine(
+                grid, node.rect.x, node.rect.y, node.rect.height, charset.v);
           } else {
-            _drawHLine(grid, node.rect.x, node.rect.y, node.rect.width, charset.h);
+            _drawHLine(
+                grid, node.rect.x, node.rect.y, node.rect.width, charset.h);
           }
           break;
         case NodeKind.stack:
@@ -108,24 +112,35 @@ class AsciiRenderer {
       return;
     }
 
+    // Fill interior so upper layers occlude lower layers (important for overlays/dialogs).
+    for (var yy = rect.y + 1; yy < rect.y + rect.height - 1; yy++) {
+      for (var xx = rect.x + 1; xx < rect.x + rect.width - 1; xx++) {
+        _put(grid, xx, yy, " ");
+      }
+    }
+
     _put(grid, rect.x, rect.y, cs.tl);
     _put(grid, rect.x + rect.width - 1, rect.y, cs.tr);
     _put(grid, rect.x, rect.y + rect.height - 1, cs.bl);
     _put(grid, rect.x + rect.width - 1, rect.y + rect.height - 1, cs.br);
 
     _drawHLine(grid, rect.x + 1, rect.y, rect.width - 2, cs.h);
-    _drawHLine(grid, rect.x + 1, rect.y + rect.height - 1, rect.width - 2, cs.h);
+    _drawHLine(
+        grid, rect.x + 1, rect.y + rect.height - 1, rect.width - 2, cs.h);
     _drawVLine(grid, rect.x, rect.y + 1, rect.height - 2, cs.v);
-    _drawVLine(grid, rect.x + rect.width - 1, rect.y + 1, rect.height - 2, cs.v);
+    _drawVLine(
+        grid, rect.x + rect.width - 1, rect.y + 1, rect.height - 2, cs.v);
   }
 
-  void _drawHLine(List<List<String>> grid, int x, int y, int length, String char) {
+  void _drawHLine(
+      List<List<String>> grid, int x, int y, int length, String char) {
     for (var i = 0; i < length; i++) {
       _put(grid, x + i, y, char);
     }
   }
 
-  void _drawVLine(List<List<String>> grid, int x, int y, int length, String char) {
+  void _drawVLine(
+      List<List<String>> grid, int x, int y, int length, String char) {
     for (var i = 0; i < length; i++) {
       _put(grid, x, y + i, char);
     }
@@ -138,9 +153,8 @@ class AsciiRenderer {
     String text, {
     int? maxWidth,
   }) {
-    final limit = maxWidth == null
-        ? text.length
-        : _clampInt(maxWidth, 0, text.length);
+    final limit =
+        maxWidth == null ? text.length : _clampInt(maxWidth, 0, text.length);
     for (var i = 0; i < limit; i++) {
       _put(grid, x + i, y, text[i]);
     }

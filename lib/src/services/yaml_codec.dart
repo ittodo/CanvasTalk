@@ -3,6 +3,7 @@ import "package:yaml/yaml.dart";
 
 import "../model/diagnostic.dart";
 import "../model/ui_node.dart";
+import "../model/ui_page.dart";
 import "../model/ui_project.dart";
 
 class YamlDecodeResult {
@@ -121,6 +122,7 @@ class ProjectYamlCodec {
     }
 
     final seenPageIds = <String>{};
+    final pageById = project.pagesById;
     for (var i = 0; i < project.pages.length; i++) {
       final page = project.pages[i];
       if (page.id.trim().isEmpty) {
@@ -142,6 +144,70 @@ class ProjectYamlCodec {
           ),
         );
       }
+
+      if (page.mode == UiPageMode.overlay) {
+        final baseId = page.basePageId?.trim();
+        if (baseId == null || baseId.isEmpty) {
+          diagnostics.add(
+            Diagnostic.error(
+              "page.base_missing",
+              "Overlay page '${page.id}' must set basePageId.",
+              path: "pages[$i]",
+            ),
+          );
+        } else if (baseId == page.id) {
+          diagnostics.add(
+            Diagnostic.error(
+              "page.base_self",
+              "Overlay page '${page.id}' cannot inherit itself.",
+              path: "pages[$i]",
+            ),
+          );
+        } else if (!pageById.containsKey(baseId)) {
+          diagnostics.add(
+            Diagnostic.error(
+              "page.base_not_found",
+              "Overlay page '${page.id}' references unknown basePageId '$baseId'.",
+              path: "pages[$i]",
+            ),
+          );
+        }
+      }
+    }
+
+    final visitState = <String, int>{};
+    bool detectCycle(String id, List<String> chain) {
+      final state = visitState[id] ?? 0;
+      if (state == 1) {
+        diagnostics.add(
+          Diagnostic.error(
+            "page.base_cycle",
+            "Overlay base cycle detected: ${[...chain, id].join(" -> ")}",
+            path: "pages",
+          ),
+        );
+        return true;
+      }
+      if (state == 2) {
+        return false;
+      }
+
+      visitState[id] = 1;
+      final page = pageById[id];
+      final baseId = page?.basePageId?.trim();
+      if (page != null &&
+          page.mode == UiPageMode.overlay &&
+          baseId != null &&
+          baseId.isNotEmpty &&
+          pageById.containsKey(baseId)) {
+        detectCycle(baseId, <String>[...chain, id]);
+      }
+      visitState[id] = 2;
+      return false;
+    }
+
+    for (final page in project.pages) {
+      detectCycle(page.id, <String>[]);
     }
 
     if (!project.pagesById.containsKey(project.activePageId)) {

@@ -225,17 +225,10 @@ class ComponentExpander {
   }
 
   UiNode _expandList(UiNode node) {
-    final title = node.props["title"]?.toString() ?? "List";
     final items = _stringListFrom(node.props["items"]);
     final selectedIndex = _toInt(node.props["selectedIndex"], fallback: 0);
 
     final generated = <UiNode>[
-      _labelNode(
-        id: "${node.id}__title",
-        text: title,
-        y: 0,
-        width: _labelWidth(node),
-      ),
       UiNode(
         id: "${node.id}__title_line",
         kind: NodeKind.line,

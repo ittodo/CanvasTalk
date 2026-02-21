@@ -1,5 +1,6 @@
 import "package:flutter/material.dart";
 
+import "../model/ui_page.dart";
 import "../services/folder_picker.dart";
 import "../state/app_controller.dart";
 
@@ -16,6 +17,19 @@ class PageControlBar extends StatelessWidget {
     final currentPath = controller.currentProjectPath;
     final hasCurrentPath = currentPath != null && currentPath.trim().isNotEmpty;
     final recents = controller.recentProjectPaths;
+    final zoomPercent = (controller.canvasZoom * 100).round();
+    final activePage = controller.activePage;
+    final standalonePreviewMode = controller.standaloneOverlayPreviewMode;
+    final baseCandidates =
+        controller.pages.where((page) => page.id != activePage.id).toList();
+    final overlayChildren = controller.pages
+        .where(
+          (page) =>
+              page.mode == UiPageMode.overlay &&
+              page.basePageId != null &&
+              page.basePageId == activePage.id,
+        )
+        .toList();
 
     return Container(
       width: double.infinity,
@@ -116,6 +130,41 @@ class PageControlBar extends StatelessWidget {
                   icon: const Icon(Icons.comment_outlined),
                 ),
                 const SizedBox(width: 12),
+                const VerticalDivider(width: 1, thickness: 1),
+                const SizedBox(width: 12),
+                const Text("View Zoom"),
+                IconButton(
+                  tooltip: "Canvas Zoom Out (view only)",
+                  onPressed: controller.zoomOutCanvasView,
+                  icon: const Icon(Icons.zoom_out),
+                ),
+                OutlinedButton(
+                  onPressed: controller.resetCanvasZoom,
+                  child: Text("$zoomPercent%"),
+                ),
+                IconButton(
+                  tooltip: "Canvas Zoom In (view only)",
+                  onPressed: controller.zoomInCanvasView,
+                  icon: const Icon(Icons.zoom_in),
+                ),
+                const SizedBox(width: 12),
+                const VerticalDivider(width: 1, thickness: 1),
+                const SizedBox(width: 12),
+                Tooltip(
+                  message: "Scale all UI +10% (canvas size included)",
+                  child: FilledButton.tonalIcon(
+                    onPressed: () => controller.scaleProject(1.1),
+                    icon: const Icon(Icons.aspect_ratio),
+                    label: const Text("Scale +10%"),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                OutlinedButton.icon(
+                  onPressed: () => controller.scaleProject(0.9),
+                  icon: const Icon(Icons.compress),
+                  label: const Text("Scale -10%"),
+                ),
+                const SizedBox(width: 12),
                 SizedBox(
                   width: 420,
                   child: Text(
@@ -140,8 +189,122 @@ class PageControlBar extends StatelessWidget {
               itemBuilder: (context, index) {
                 final page = controller.pages[index];
                 final selected = page.id == controller.activePageId;
-                return _pageTab(context, page.id, page.name, selected);
+                return _pageTab(
+                  context,
+                  page.id,
+                  page.name,
+                  selected,
+                  isOverlay: page.mode == UiPageMode.overlay,
+                );
               },
+            ),
+          ),
+          const SizedBox(height: 6),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: <Widget>[
+                const Text("Page Mode"),
+                const SizedBox(width: 8),
+                DropdownButton<UiPageMode>(
+                  value: activePage.mode,
+                  onChanged: (mode) {
+                    if (mode == null) {
+                      return;
+                    }
+                    controller.setActivePageMode(mode);
+                  },
+                  items: UiPageMode.values
+                      .map(
+                        (mode) => DropdownMenuItem<UiPageMode>(
+                          value: mode,
+                          child: Text(mode.name),
+                        ),
+                      )
+                      .toList(),
+                ),
+                const SizedBox(width: 12),
+                if (activePage.mode == UiPageMode.overlay) ...<Widget>[
+                  const Text("Base Page"),
+                  const SizedBox(width: 8),
+                  DropdownButton<String>(
+                    value: activePage.basePageId,
+                    hint: const Text("Select base"),
+                    onChanged: (value) =>
+                        controller.setActivePageBasePage(value),
+                    items: baseCandidates
+                        .map(
+                          (page) => DropdownMenuItem<String>(
+                            value: page.id,
+                            child: Text(page.name),
+                          ),
+                        )
+                        .toList(),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    "Overlay = parent page + current page layers",
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ] else ...<Widget>[
+                  Text(
+                    "Standalone = independent page",
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ],
+                const SizedBox(width: 16),
+                const Text("Standalone Preview"),
+                const SizedBox(width: 8),
+                DropdownButton<StandaloneOverlayPreviewMode>(
+                  value: standalonePreviewMode,
+                  onChanged: (mode) {
+                    if (mode == null) {
+                      return;
+                    }
+                    controller.setStandaloneOverlayPreviewMode(mode);
+                  },
+                  items: const <DropdownMenuItem<StandaloneOverlayPreviewMode>>[
+                    DropdownMenuItem<StandaloneOverlayPreviewMode>(
+                      value: StandaloneOverlayPreviewMode.oneLevel,
+                      child: Text("1-level"),
+                    ),
+                    DropdownMenuItem<StandaloneOverlayPreviewMode>(
+                      value: StandaloneOverlayPreviewMode.fullTree,
+                      child: Text("Full tree"),
+                    ),
+                  ],
+                ),
+                Text(
+                  "(global)",
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 6),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: <Widget>[
+                const Text("Overlay Pages On This Base"),
+                const SizedBox(width: 8),
+                if (overlayChildren.isEmpty)
+                  Text(
+                    "(none)",
+                    style: Theme.of(context).textTheme.bodySmall,
+                  )
+                else
+                  ...overlayChildren.map((overlayPage) {
+                    return Padding(
+                      padding: const EdgeInsets.only(right: 6),
+                      child: OutlinedButton(
+                        onPressed: () =>
+                            controller.setActivePage(overlayPage.id),
+                        child: Text("↗ ${overlayPage.name}"),
+                      ),
+                    );
+                  }),
+              ],
             ),
           ),
         ],
@@ -150,11 +313,8 @@ class PageControlBar extends StatelessWidget {
   }
 
   Widget _pageTab(
-    BuildContext context,
-    String pageId,
-    String pageName,
-    bool selected,
-  ) {
+      BuildContext context, String pageId, String pageName, bool selected,
+      {required bool isOverlay}) {
     final theme = Theme.of(context);
     return InkWell(
       onTap: () => controller.setActivePage(pageId),
@@ -172,7 +332,7 @@ class PageControlBar extends StatelessWidget {
           ),
         ),
         child: Text(
-          pageName,
+          isOverlay ? "◳ $pageName" : pageName,
           style: TextStyle(
             fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
             color: selected ? theme.colorScheme.onPrimaryContainer : null,

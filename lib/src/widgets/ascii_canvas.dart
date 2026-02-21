@@ -29,11 +29,16 @@ class _AsciiCanvasState extends State<AsciiCanvas> {
   double _dragRemainderX = 0;
   double _dragRemainderY = 0;
   final FocusNode _canvasFocusNode = FocusNode();
+  final ScrollController _horizontalScrollController = ScrollController();
+  final ScrollController _verticalScrollController = ScrollController();
   _ResizeHandle? _activeResizeHandle;
   bool _dragActive = false;
+  bool _panActive = false;
 
   @override
   void dispose() {
+    _horizontalScrollController.dispose();
+    _verticalScrollController.dispose();
     _canvasFocusNode.dispose();
     super.dispose();
   }
@@ -43,12 +48,29 @@ class _AsciiCanvasState extends State<AsciiCanvas> {
     return AnimatedBuilder(
       animation: widget.controller,
       builder: (context, _) {
-        final canvas = widget.controller.project.canvas;
         final text = widget.controller.asciiOutput;
         final selected = _selectedLayoutNode(widget.controller);
-        final metrics = _measureCell(_canvasTextStyle);
+        final boardRegions = widget.controller.asciiBoardRegions;
+        final zoom = widget.controller.canvasZoom;
+        final scaledTextStyle = _canvasTextStyle.copyWith(
+          fontSize: (_canvasTextStyle.fontSize ?? 13) * zoom,
+        );
+        final metrics = _measureCell(scaledTextStyle);
         final charWidth = metrics.width;
         final charHeight = metrics.height;
+        final lines = text.split("\n");
+        var renderWidthChars = 0;
+        for (final line in lines) {
+          if (line.length > renderWidthChars) {
+            renderWidthChars = line.length;
+          }
+        }
+        if (renderWidthChars < 1) {
+          renderWidthChars = 1;
+        }
+        final renderHeightChars = lines.isEmpty ? 1 : lines.length;
+        final canvasWidth = renderWidthChars * charWidth;
+        final canvasHeight = renderHeightChars * charHeight;
 
         final surface = Container(
           color: const Color(0xFF0E1511),
@@ -56,6 +78,28 @@ class _AsciiCanvasState extends State<AsciiCanvas> {
           padding: const EdgeInsets.all(8),
           child: Listener(
             behavior: HitTestBehavior.opaque,
+            onPointerSignal: (event) {
+              if (event is! PointerScrollEvent) {
+                return;
+              }
+              final x = (event.localPosition.dx / charWidth).floor();
+              final y = (event.localPosition.dy / charHeight).floor();
+              if (!_isEmptyAsciiCell(text, x, y)) {
+                return;
+              }
+
+              GestureBinding.instance.pointerSignalResolver.register(
+                event,
+                (signalEvent) {
+                  final scroll = signalEvent as PointerScrollEvent;
+                  if (scroll.scrollDelta.dy < 0) {
+                    widget.controller.zoomInCanvasView();
+                  } else if (scroll.scrollDelta.dy > 0) {
+                    widget.controller.zoomOutCanvasView();
+                  }
+                },
+              );
+            },
             onPointerDown: (event) {
               if ((event.buttons & kPrimaryMouseButton) == 0) {
                 return;
@@ -64,14 +108,22 @@ class _AsciiCanvasState extends State<AsciiCanvas> {
               final x = (event.localPosition.dx / charWidth).floor();
               final y = (event.localPosition.dy / charHeight).floor();
               widget.controller.selectNodeAt(x, y);
+              if (widget.controller.selectedNode == null) {
+                _panActive = true;
+                _dragActive = false;
+                _activeResizeHandle = null;
+                widget.controller.endPointerAdjustSession();
+                setState(() {});
+                return;
+              }
 
               final selectedAfterPick = _selectedLayoutNode(widget.controller);
               _activeResizeHandle = null;
 
               if (widget.controller.pointerEditMode == PointerEditMode.resize &&
                   selectedAfterPick != null) {
-                final selectedRect =
-                    _selectionRectPixels(selectedAfterPick.rect, charWidth, charHeight);
+                final selectedRect = _selectionRectPixels(
+                    selectedAfterPick.rect, charWidth, charHeight);
                 _activeResizeHandle = _hitTestResizeHandle(
                   event.localPosition,
                   selectedRect,
@@ -88,6 +140,7 @@ class _AsciiCanvasState extends State<AsciiCanvas> {
               if (shouldStartDrag) {
                 widget.controller.beginPointerAdjustSession();
               }
+              _panActive = false;
               _dragActive = shouldStartDrag;
               _dragRemainderX = 0;
               _dragRemainderY = 0;
@@ -95,6 +148,10 @@ class _AsciiCanvasState extends State<AsciiCanvas> {
             },
             onPointerMove: (event) {
               if ((event.buttons & kPrimaryMouseButton) == 0) {
+                return;
+              }
+              if (_panActive) {
+                _panViewportBy(event.delta);
                 return;
               }
               if (!_dragActive) {
@@ -109,14 +166,16 @@ class _AsciiCanvasState extends State<AsciiCanvas> {
               while (_dragRemainderX.abs() >= charWidth) {
                 final step = _dragRemainderX > 0 ? 1 : -1;
                 if (_dragRemainderX > 0) {
-                  if (widget.controller.pointerEditMode == PointerEditMode.move) {
+                  if (widget.controller.pointerEditMode ==
+                      PointerEditMode.move) {
                     widget.controller.moveSelected(1, 0, captureUndo: false);
                   } else {
                     _applyResizeStep(stepX: step);
                   }
                   _dragRemainderX -= charWidth;
                 } else {
-                  if (widget.controller.pointerEditMode == PointerEditMode.move) {
+                  if (widget.controller.pointerEditMode ==
+                      PointerEditMode.move) {
                     widget.controller.moveSelected(-1, 0, captureUndo: false);
                   } else {
                     _applyResizeStep(stepX: step);
@@ -127,14 +186,16 @@ class _AsciiCanvasState extends State<AsciiCanvas> {
               while (_dragRemainderY.abs() >= charHeight) {
                 final step = _dragRemainderY > 0 ? 1 : -1;
                 if (_dragRemainderY > 0) {
-                  if (widget.controller.pointerEditMode == PointerEditMode.move) {
+                  if (widget.controller.pointerEditMode ==
+                      PointerEditMode.move) {
                     widget.controller.moveSelected(0, 1, captureUndo: false);
                   } else {
                     _applyResizeStep(stepY: step);
                   }
                   _dragRemainderY -= charHeight;
                 } else {
-                  if (widget.controller.pointerEditMode == PointerEditMode.move) {
+                  if (widget.controller.pointerEditMode ==
+                      PointerEditMode.move) {
                     widget.controller.moveSelected(0, -1, captureUndo: false);
                   } else {
                     _applyResizeStep(stepY: step);
@@ -144,29 +205,34 @@ class _AsciiCanvasState extends State<AsciiCanvas> {
               }
             },
             onPointerUp: (_) {
-              widget.controller.endPointerAdjustSession();
+              if (_dragActive) {
+                widget.controller.endPointerAdjustSession();
+              }
               _dragActive = false;
+              _panActive = false;
               _activeResizeHandle = null;
               setState(() {});
             },
             onPointerCancel: (_) {
-              widget.controller.endPointerAdjustSession();
+              if (_dragActive) {
+                widget.controller.endPointerAdjustSession();
+              }
               _dragActive = false;
+              _panActive = false;
               _activeResizeHandle = null;
               setState(() {});
             },
             child: CustomPaint(
-              size: Size(
-                canvas.width * charWidth,
-                canvas.height * charHeight,
-              ),
+              size: Size(canvasWidth, canvasHeight),
               painter: _AsciiPainter(
                 ascii: text,
-                textStyle: _canvasTextStyle,
+                textStyle: scaledTextStyle,
                 charWidth: charWidth,
                 charHeight: charHeight,
+                boardRegions: boardRegions,
                 selected: selected?.rect,
-                showResizeHandles: widget.controller.pointerEditMode == PointerEditMode.resize &&
+                showResizeHandles: widget.controller.pointerEditMode ==
+                        PointerEditMode.resize &&
                     selected != null,
                 activeHandle: _activeResizeHandle,
               ),
@@ -183,10 +249,26 @@ class _AsciiCanvasState extends State<AsciiCanvas> {
                 right: BorderSide(color: Theme.of(context).dividerColor),
               ),
             ),
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
+            child: Scrollbar(
+              controller: _horizontalScrollController,
+              thumbVisibility: true,
+              trackVisibility: true,
+              notificationPredicate: (notification) =>
+                  notification.metrics.axis == Axis.horizontal,
               child: SingleChildScrollView(
-                child: surface,
+                controller: _horizontalScrollController,
+                scrollDirection: Axis.horizontal,
+                child: Scrollbar(
+                  controller: _verticalScrollController,
+                  thumbVisibility: true,
+                  trackVisibility: true,
+                  notificationPredicate: (notification) =>
+                      notification.metrics.axis == Axis.vertical,
+                  child: SingleChildScrollView(
+                    controller: _verticalScrollController,
+                    child: surface,
+                  ),
+                ),
               ),
             ),
           ),
@@ -223,6 +305,18 @@ class _AsciiCanvasState extends State<AsciiCanvas> {
     final width = rawWidth <= 0 ? 8.0 : rawWidth;
     final height = rawHeight <= 0 ? 16.0 : rawHeight;
     return _CellMetrics(width: width, height: height);
+  }
+
+  bool _isEmptyAsciiCell(String ascii, int x, int y) {
+    final lines = ascii.split("\n");
+    if (y < 0 || y >= lines.length) {
+      return true;
+    }
+    final line = lines[y];
+    if (x < 0 || x >= line.length) {
+      return true;
+    }
+    return line[x] == " ";
   }
 
   KeyEventResult _onKeyEvent(KeyEvent event) {
@@ -298,6 +392,30 @@ class _AsciiCanvasState extends State<AsciiCanvas> {
     }
     return null;
   }
+
+  void _panViewportBy(Offset delta) {
+    _jumpBy(_horizontalScrollController, -delta.dx);
+    _jumpBy(_verticalScrollController, -delta.dy);
+  }
+
+  void _jumpBy(ScrollController controller, double delta) {
+    if (!controller.hasClients) {
+      return;
+    }
+    final position = controller.position;
+    final current = controller.offset;
+    var target = current + delta;
+    if (target < position.minScrollExtent) {
+      target = position.minScrollExtent;
+    }
+    if (target > position.maxScrollExtent) {
+      target = position.maxScrollExtent;
+    }
+    if ((target - current).abs() < 0.01) {
+      return;
+    }
+    controller.jumpTo(target);
+  }
 }
 
 class _AsciiPainter extends CustomPainter {
@@ -306,6 +424,7 @@ class _AsciiPainter extends CustomPainter {
     required this.textStyle,
     required this.charWidth,
     required this.charHeight,
+    required this.boardRegions,
     this.selected,
     required this.showResizeHandles,
     this.activeHandle,
@@ -315,6 +434,7 @@ class _AsciiPainter extends CustomPainter {
   final TextStyle textStyle;
   final double charWidth;
   final double charHeight;
+  final List<RectI> boardRegions;
   final RectI? selected;
   final bool showResizeHandles;
   final _ResizeHandle? activeHandle;
@@ -327,11 +447,39 @@ class _AsciiPainter extends CustomPainter {
     final gridPaint = Paint()
       ..color = const Color(0x1EFFFFFF)
       ..strokeWidth = 1;
-    for (var x = 0.0; x <= size.width; x += charWidth) {
-      canvas.drawLine(Offset(x, 0), Offset(x, size.height), gridPaint);
-    }
-    for (var y = 0.0; y <= size.height; y += charHeight) {
-      canvas.drawLine(Offset(0, y), Offset(size.width, y), gridPaint);
+    final boardBorderPaint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1
+      ..color = const Color(0x4DFFFFFF);
+
+    if (boardRegions.isEmpty) {
+      for (var x = 0.0; x <= size.width; x += charWidth) {
+        canvas.drawLine(Offset(x, 0), Offset(x, size.height), gridPaint);
+      }
+      for (var y = 0.0; y <= size.height; y += charHeight) {
+        canvas.drawLine(Offset(0, y), Offset(size.width, y), gridPaint);
+      }
+    } else {
+      for (final board in boardRegions) {
+        final left = board.x * charWidth;
+        final top = board.y * charHeight;
+        final width = board.width * charWidth;
+        final height = board.height * charHeight;
+
+        for (var i = 0; i <= board.width; i++) {
+          final x = left + i * charWidth;
+          canvas.drawLine(Offset(x, top), Offset(x, top + height), gridPaint);
+        }
+        for (var i = 0; i <= board.height; i++) {
+          final y = top + i * charHeight;
+          canvas.drawLine(Offset(left, y), Offset(left + width, y), gridPaint);
+        }
+
+        canvas.drawRect(
+          Rect.fromLTWH(left, top, width, height).deflate(0.5),
+          boardBorderPaint,
+        );
+      }
     }
 
     for (var i = 0; i < lines.length; i++) {
@@ -345,7 +493,8 @@ class _AsciiPainter extends CustomPainter {
         ..style = PaintingStyle.stroke
         ..strokeWidth = 1
         ..color = const Color(0xFFE7C04D);
-      final selectionRect = _selectionRectPixels(selected!, charWidth, charHeight);
+      final selectionRect =
+          _selectionRectPixels(selected!, charWidth, charHeight);
       canvas.drawRect(selectionRect, rectPaint);
       if (showResizeHandles) {
         _drawResizeHandles(canvas, selectionRect);
@@ -357,6 +506,7 @@ class _AsciiPainter extends CustomPainter {
   bool shouldRepaint(covariant _AsciiPainter oldDelegate) {
     return ascii != oldDelegate.ascii ||
         selected != oldDelegate.selected ||
+        boardRegions != oldDelegate.boardRegions ||
         textStyle != oldDelegate.textStyle ||
         charWidth != oldDelegate.charWidth ||
         charHeight != oldDelegate.charHeight ||
