@@ -5,8 +5,8 @@
 ## 핵심 컨셉
 
 - 사람은 CanvasTalk 캔버스에서 UI를 직접 설계합니다.
-- LLM은 로컬 소켓(`127.0.0.1`) 기반 Control API로 ASCII 결과를 받아 같은 화면을 인식합니다.
-- 최종적으로 사람과 LLM이 동일한 UI 상태(ASCII + YAML)를 기준으로 구현/수정 작업을 진행합니다.
+- LLM은 로컬 소켓(`127.0.0.1`) 기반 Control API로 ASCII/YAML을 읽고, `POST /canvas/patch`로 UI를 직접 편집할 수 있습니다.
+- 최종적으로 사람과 LLM이 동일한 UI 상태(ASCII + YAML)를 공유하며, 양방향으로 구현/수정 작업을 진행합니다.
 
 ## 주요 기능
 
