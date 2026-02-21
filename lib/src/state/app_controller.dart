@@ -1580,7 +1580,7 @@ class AppController extends ChangeNotifier implements ControlApi {
             "items": <String>["One", "Two", "Three"],
             "selectedIndex": 0,
             "placeholder": "Select",
-            "expanded": false,
+            "expanded": true,
           },
         );
       case NodeKind.box:

@@ -774,7 +774,7 @@ class _InspectorPanelState extends State<InspectorPanel> {
           "items": <String>["One", "Two", "Three"],
           "selectedIndex": 0,
           "placeholder": "Select",
-          "expanded": false,
+          "expanded": true,
         };
     }
   }
