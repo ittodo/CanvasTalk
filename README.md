@@ -1,4 +1,4 @@
-# AsciiPaint Runtime Studio
+# CanvasTalk Runtime Studio
 
 LLM-사람 협업용 ASCII UI 편집기 (Flutter Windows/Desktop).
 
@@ -43,8 +43,8 @@ flutter build windows --debug
 
 - UI 본문: `<project-root>/ui/main.yaml`
 - 메타: `<project-root>/project.yaml`
-- 스냅샷: `<project-root>/.asciipaint/history/*.snapshot.yaml`
-- 에디터 config(최근 프로젝트): `%USERPROFILE%/.asciipaint/config.json`
+- 스냅샷: `<project-root>/.canvastalk/history/*.snapshot.yaml`
+- 에디터 config(최근 프로젝트): `%USERPROFILE%/.canvastalk/config.json`
 
 ## HTTP API
 
@@ -60,7 +60,7 @@ flutter build windows --debug
 
 요청 헤더:
 
-- `x-asciipaint-token: <token>`
+- `x-canvastalk-token: <token>`
 
 ### patch 예시
 

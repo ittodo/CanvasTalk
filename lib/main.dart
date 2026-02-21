@@ -5,17 +5,17 @@ import "src/state/app_controller.dart";
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  runApp(const AsciiPaintApp());
+  runApp(const CanvasTalkApp());
 }
 
-class AsciiPaintApp extends StatefulWidget {
-  const AsciiPaintApp({super.key});
+class CanvasTalkApp extends StatefulWidget {
+  const CanvasTalkApp({super.key});
 
   @override
-  State<AsciiPaintApp> createState() => _AsciiPaintAppState();
+  State<CanvasTalkApp> createState() => _CanvasTalkAppState();
 }
 
-class _AsciiPaintAppState extends State<AsciiPaintApp> {
+class _CanvasTalkAppState extends State<CanvasTalkApp> {
   late final AppController _controller;
 
   @override
@@ -34,7 +34,7 @@ class _AsciiPaintAppState extends State<AsciiPaintApp> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: "AsciiPaint",
+      title: "CanvasTalk",
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         useMaterial3: true,

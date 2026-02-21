@@ -28,7 +28,7 @@ class ProjectStorage {
     final meta = File(p.join(root.path, "project.yaml"));
     await meta.writeAsString(
       [
-        "name: asciipaint-project",
+        "name: canvastalk-project",
         "version: ${project.version}",
         "activePageId: ${project.activePageId}",
         "pageCount: ${project.pages.length}",
@@ -50,7 +50,7 @@ class ProjectStorage {
   }
 
   Future<void> _writeSnapshot(String rootPath, String yaml) async {
-    final historyDir = Directory(p.join(rootPath, ".asciipaint", "history"));
+    final historyDir = Directory(p.join(rootPath, ".canvastalk", "history"));
     await historyDir.create(recursive: true);
     final fileName = "${DateTime.now().millisecondsSinceEpoch}.snapshot.yaml";
     final snapshot = File(p.join(historyDir.path, fileName));

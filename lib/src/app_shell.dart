@@ -50,7 +50,7 @@ class AppShell extends StatelessWidget {
               autofocus: true,
               child: Scaffold(
                 appBar: AppBar(
-                  title: const Text("AsciiPaint Runtime Studio"),
+                  title: const Text("CanvasTalk Runtime Studio"),
                   bottom: PreferredSize(
                     preferredSize: const Size.fromHeight(24),
                     child: Container(

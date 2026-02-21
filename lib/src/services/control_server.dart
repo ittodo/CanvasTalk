@@ -161,7 +161,8 @@ class ControlServer {
     if (token == null || token.isEmpty) {
       return false;
     }
-    final header = request.headers.value("x-asciipaint-token");
+    final header = request.headers.value("x-canvastalk-token") ??
+        request.headers.value("x-asciipaint-token");
     return header == token;
   }
 

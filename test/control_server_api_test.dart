@@ -3,7 +3,7 @@ import "dart:io";
 
 import "package:flutter_test/flutter_test.dart";
 
-import "package:asciipaint/src/state/app_controller.dart";
+import "package:canvastalk/src/state/app_controller.dart";
 
 void main() {
   test("control server HTTP smoke", () async {
@@ -191,7 +191,7 @@ void main() {
     expect(badPreviewMode.json["ok"], isFalse);
 
     final createdDir = await Directory.systemTemp.createTemp(
-      "asciipaint_srv_test_",
+      "canvastalk_srv_test_",
     );
     tempDir = createdDir;
     final tempPath = createdDir.path;
@@ -239,7 +239,7 @@ Future<_HttpResult> _requestJson({
   try {
     final request = await client.openUrl(method, uri);
     if (token != null && token.isNotEmpty) {
-      request.headers.set("x-asciipaint-token", token);
+      request.headers.set("x-canvastalk-token", token);
     }
     if (body != null) {
       request.headers.contentType = ContentType.json;

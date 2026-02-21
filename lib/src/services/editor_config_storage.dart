@@ -47,12 +47,18 @@ class EditorConfigStorage {
 
   Future<EditorConfig> load() async {
     final file = await _configFile();
-    if (!await file.exists()) {
-      return EditorConfig();
+    File target = file;
+    if (!await target.exists()) {
+      final legacy = await _legacyConfigFile();
+      if (await legacy.exists()) {
+        target = legacy;
+      } else {
+        return EditorConfig();
+      }
     }
 
     try {
-      final source = await file.readAsString();
+      final source = await target.readAsString();
       if (source.trim().isEmpty) {
         return EditorConfig();
       }
@@ -112,6 +118,12 @@ class EditorConfigStorage {
   }
 
   Future<File> _configFile() async {
+    final home = _userHomePath();
+    final dir = Directory(p.join(home, ".canvastalk"));
+    return File(p.join(dir.path, "config.json"));
+  }
+
+  Future<File> _legacyConfigFile() async {
     final home = _userHomePath();
     final dir = Directory(p.join(home, ".asciipaint"));
     return File(p.join(dir.path, "config.json"));

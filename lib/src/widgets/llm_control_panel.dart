@@ -92,7 +92,7 @@ class LlmControlPanel extends StatelessWidget {
       "",
       "POST /yaml/validate",
       "curl -X POST http://127.0.0.1:$port/yaml/validate \\",
-      "  -H \"x-asciipaint-token: $token\" \\",
+      "  -H \"x-canvastalk-token: $token\" \\",
       "  -H \"content-type: application/json\" \\",
       "  -d '{\"yaml\":\"version: 1.0\\ncanvas:\\n  width: 80\\n  height: 24\\nnodes: []\"}'",
       "",

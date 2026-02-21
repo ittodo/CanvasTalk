@@ -1723,7 +1723,7 @@ class AppController extends ChangeNotifier implements ControlApi {
   Map<String, dynamic> healthPayload() {
     return <String, dynamic>{
       "ok": true,
-      "server": "asciipaint-control",
+      "server": "canvastalk-control",
       "port": _server.port,
       "token": _server.token,
       "selectedNodeId": _selectedNodeId,

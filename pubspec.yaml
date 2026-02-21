@@ -1,4 +1,4 @@
-name: asciipaint
+name: canvastalk
 description: ASCII UI runtime/editor for LLM-human collaboration.
 publish_to: "none"
 version: 0.1.0+1
