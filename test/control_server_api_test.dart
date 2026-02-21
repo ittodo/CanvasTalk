@@ -96,6 +96,52 @@ void main() {
     expect(patch.statusCode, HttpStatus.ok);
     expect(patch.json["ok"], isTrue);
 
+    final addList = await _requestJson(
+      method: "POST",
+      uri: base.resolve("/canvas/patch"),
+      token: token,
+      body: <String, dynamic>{
+        "op": "add_node",
+        "node": <String, dynamic>{
+          "id": "server_test_list",
+          "kind": "list",
+          "x": 4,
+          "y": 6,
+          "width": 30,
+          "height": 8,
+          "props": <String, dynamic>{
+            "items": <String>["A", "B", "C"],
+            "selectedIndex": 0,
+          },
+        },
+      },
+    );
+    expect(addList.statusCode, HttpStatus.ok);
+    expect(addList.json["ok"], isTrue);
+
+    final disallowedPopupInList = await _requestJson(
+      method: "POST",
+      uri: base.resolve("/canvas/patch"),
+      token: token,
+      body: <String, dynamic>{
+        "op": "add_node",
+        "parentId": "server_test_list",
+        "node": <String, dynamic>{
+          "id": "server_test_popup_in_list",
+          "kind": "popup",
+          "x": 1,
+          "y": 1,
+          "width": 20,
+          "height": 8,
+          "props": <String, dynamic>{
+            "title": "Invalid Nested Popup",
+          },
+        },
+      },
+    );
+    expect(disallowedPopupInList.statusCode, HttpStatus.ok);
+    expect(disallowedPopupInList.json["ok"], isFalse);
+
     final addPageA = await _requestJson(
       method: "POST",
       uri: base.resolve("/canvas/patch"),

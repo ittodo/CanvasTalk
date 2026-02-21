@@ -460,7 +460,6 @@ class _AsciiPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final lines = ascii.split("\n");
-    final painter = TextPainter(textDirection: TextDirection.ltr);
     final snap = _snapper(devicePixelRatio);
 
     final gridPaint = Paint()
@@ -518,10 +517,32 @@ class _AsciiPainter extends CustomPainter {
       }
     }
 
-    for (var i = 0; i < lines.length; i++) {
-      painter.text = TextSpan(text: lines[i], style: textStyle);
-      painter.layout();
-      painter.paint(canvas, Offset(0, snap(i * charHeight)));
+    final charPainters = <String, TextPainter>{};
+    TextPainter painterFor(String ch) {
+      final cached = charPainters[ch];
+      if (cached != null) {
+        return cached;
+      }
+      final painter = TextPainter(
+        text: TextSpan(text: ch, style: textStyle),
+        textDirection: TextDirection.ltr,
+      )..layout();
+      charPainters[ch] = painter;
+      return painter;
+    }
+
+    for (var row = 0; row < lines.length; row++) {
+      final line = lines[row];
+      final y = snap(row * charHeight);
+      for (var col = 0; col < line.length; col++) {
+        final ch = line[col];
+        if (ch == " ") {
+          continue;
+        }
+        final painter = painterFor(ch);
+        final x = snap(col * charWidth);
+        painter.paint(canvas, Offset(x, y));
+      }
     }
 
     if (selected != null) {

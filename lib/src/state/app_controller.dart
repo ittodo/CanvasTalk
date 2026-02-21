@@ -675,13 +675,27 @@ class AppController extends ChangeNotifier implements ControlApi {
     _captureUndoIfNeeded(true);
     final newNode = _defaultNodeFor(kind);
     final parent = selectedNode;
-    if (parent != null && _isContainer(parent.kind)) {
+    var canAttachToParent = false;
+
+    if (parent != null &&
+        _isContainer(parent.kind) &&
+        _allowsChild(parent.kind, kind)) {
+      canAttachToParent = true;
       parent.children.add(newNode);
     } else {
       _project.nodes.add(newNode);
     }
+
     _selectedNodeId = newNode.id;
-    _statusMessage = "Inserted '${newNode.id}'.";
+    if (canAttachToParent) {
+      _statusMessage = "Inserted '${newNode.id}'.";
+    } else if (parent != null && _isContainer(parent.kind)) {
+      _statusMessage =
+          "Inserted '${newNode.id}' at root; '${parent.kind.name}' cannot contain '${kind.name}'.";
+    } else {
+      _statusMessage = "Inserted '${newNode.id}'.";
+    }
+
     _commitAndRebuild();
   }
 
@@ -807,19 +821,32 @@ class AppController extends ChangeNotifier implements ControlApi {
         if (rawNode is! Map) {
           return false;
         }
-        _captureUndoIfNeeded(true);
         final node = UiNode.fromMap(Map<String, dynamic>.from(rawNode));
         if (_findNodeById(node.id) != null) {
           node.id = _nextNodeId(node.kind.name);
         }
         final parentId = patch["parentId"]?.toString();
         if (parentId == null || parentId.isEmpty) {
+          _captureUndoIfNeeded(true);
           _project.nodes.add(node);
         } else {
           final parent = _findNodeById(parentId);
           if (parent == null) {
             return false;
           }
+          if (!_isContainer(parent.kind)) {
+            _statusMessage =
+                "Patch rejected: '${parent.kind.name}' cannot contain children.";
+            notifyListeners();
+            return false;
+          }
+          if (!_allowsChild(parent.kind, node.kind)) {
+            _statusMessage =
+                "Patch rejected: '${parent.kind.name}' cannot contain '${node.kind.name}'.";
+            notifyListeners();
+            return false;
+          }
+          _captureUndoIfNeeded(true);
           parent.children.add(node);
         }
         _selectedNodeId = node.id;
@@ -1547,8 +1574,8 @@ class AppController extends ChangeNotifier implements ControlApi {
           kind: kind,
           x: 2,
           y: 2,
-          width: 24,
-          height: 3,
+          width: 30,
+          height: 6,
           props: <String, dynamic>{
             "items": <String>["One", "Two", "Three"],
             "selectedIndex": 0,
@@ -1585,6 +1612,17 @@ class AppController extends ChangeNotifier implements ControlApi {
       case NodeKind.toggle:
       case NodeKind.combo:
         return false;
+    }
+  }
+
+  bool _allowsChild(NodeKind parent, NodeKind candidate) {
+    switch (parent) {
+      case NodeKind.list:
+      case NodeKind.tab:
+      case NodeKind.combo:
+        return candidate != NodeKind.popup;
+      default:
+        return true;
     }
   }
 

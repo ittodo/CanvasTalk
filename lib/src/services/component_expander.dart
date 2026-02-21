@@ -121,22 +121,49 @@ class ComponentExpander {
         ? items[selectedIndex]
         : placeholder;
     final lineWidth = _labelWidth(node);
-    final arrowToken = expanded ? "[^]" : "[v]";
-    final selectedWidth =
-        _clampInt(lineWidth - arrowToken.length - 1, 1, lineWidth);
-    final selectedLine =
-        "${_fitText(selectedText, selectedWidth).padRight(selectedWidth)} $arrowToken";
+    final arrowToken = expanded ? "^" : "v";
+    final selectedPrefix = "[$arrowToken] ";
 
-    final generated = <UiNode>[
+    String optionsSummary(int width) {
+      if (items.isEmpty) {
+        return "";
+      }
+      final options = items.join(" | ");
+      final wrapped = " { $options }";
+      return _fitText(wrapped, width);
+    }
+
+    String selectedLine({
+      required int width,
+      required bool includeSummary,
+    }) {
+      final summary = includeSummary ? optionsSummary(width) : "";
+      final selectedWidth = _clampInt(
+        width - selectedPrefix.length - summary.length,
+        1,
+        width,
+      );
+      final left =
+          _fitText(selectedText, selectedWidth).padRight(selectedWidth);
+      return "$selectedPrefix$left$summary";
+    }
+
+    final generated = <UiNode>[];
+    final expandedItemSlots = _clampInt(_contentHeight(node) - 2, 0, 1 << 30);
+    final canRenderExpandedList = expanded && expandedItemSlots > 0;
+    generated.add(
       _labelNode(
         id: "${node.id}__selected",
-        text: selectedLine,
+        text: selectedLine(
+          width: lineWidth,
+          includeSummary: expanded && !canRenderExpandedList,
+        ),
         y: 0,
         width: lineWidth,
       ),
-    ];
+    );
 
-    if (expanded) {
+    if (expanded && canRenderExpandedList) {
       generated.add(
         UiNode(
           id: "${node.id}__divider",
@@ -158,15 +185,33 @@ class ComponentExpander {
           ),
         );
       } else {
-        final maxItems = _clampInt(_contentHeight(node) - 2, 0, items.length);
+        final maxItems = _clampInt(expandedItemSlots, 0, items.length);
         final itemWidth = _clampInt(lineWidth - 2, 1, lineWidth);
-        for (var i = 0; i < maxItems; i++) {
+        var visibleCount = maxItems;
+        if (items.length > maxItems && maxItems > 0) {
+          visibleCount = maxItems - 1;
+        }
+        if (visibleCount < 0) {
+          visibleCount = 0;
+        }
+        for (var i = 0; i < visibleCount; i++) {
           final marker = i == selectedIndex ? ">" : " ";
           generated.add(
             _labelNode(
               id: "${node.id}__item_$i",
               text: "$marker ${_fitText(items[i], itemWidth)}",
               y: 2 + i,
+              width: lineWidth,
+            ),
+          );
+        }
+        if (items.length > maxItems && maxItems > 0) {
+          final hidden = items.length - visibleCount;
+          generated.add(
+            _labelNode(
+              id: "${node.id}__more",
+              text: "... (+$hidden)",
+              y: 2 + maxItems - 1,
               width: lineWidth,
             ),
           );
@@ -295,12 +340,17 @@ class ComponentExpander {
       ],
     );
 
-    return _asRoleBox(
+    final expanded = _asRoleBox(
       node,
       role: "popup",
       generatedChildren: <UiNode>[dialog],
       includeExistingChildren: false,
     );
+    // Prevent duplicate title rendering: only inner dialog keeps popup title.
+    expanded.props = <String, dynamic>{
+      ...expanded.props,
+    }..remove("title");
+    return expanded;
   }
 
   UiNode _asRoleBox(
