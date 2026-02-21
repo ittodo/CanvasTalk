@@ -1,0 +1,39 @@
+version: "1.0"
+canvas:
+  width: 100
+  height: 30
+  charset: unicode
+nodes:
+  - id: frame
+    kind: box
+    x: 1
+    y: 1
+    width: 98
+    height: 28
+    props:
+      title: Demo Surface
+    children:
+      - id: title
+        kind: label
+        x: 2
+        y: 1
+        width: 32
+        height: 1
+        props:
+          text: YAML to ASCII UI
+      - id: action
+        kind: button
+        x: 2
+        y: 4
+        width: 22
+        height: 3
+        props:
+          text: Execute
+      - id: command
+        kind: input
+        x: 2
+        y: 8
+        width: 36
+        height: 3
+        props:
+          placeholder: command...
