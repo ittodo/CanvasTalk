@@ -19,6 +19,20 @@ LLM-사람 협업용 ASCII UI 편집기 (Flutter Windows/Desktop).
   - 저장 성공/실패 팝업
 - 로컬 HTTP Control API (`127.0.0.1`) 제공
 
+## 스크린샷
+
+스크린샷 파일을 `docs/screenshots`에 넣으면 README에서 바로 노출할 수 있습니다.
+
+### 메인 캔버스
+
+![Main Canvas](docs/screenshots/main-canvas.png)
+
+추가 스크린샷도 같은 방식으로 아래 경로에 넣어 확장하면 됩니다.
+
+- `docs/screenshots/pages-overlays.png`
+- `docs/screenshots/yaml-inspector.png`
+- `docs/screenshots/llm-control.png`
+
 ## 실행
 
 ```bash
