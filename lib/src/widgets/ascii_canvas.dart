@@ -6,8 +6,14 @@ import "../services/layout_engine.dart";
 import "../state/app_controller.dart";
 
 const TextStyle _canvasTextStyle = TextStyle(
-  fontFamily: "Consolas",
-  fontFamilyFallback: <String>["Courier New", "monospace"],
+  fontFamily: "monospace",
+  fontFamilyFallback: <String>[
+    "Consolas",
+    "Courier New",
+    "Menlo",
+    "Monaco",
+    "Liberation Mono",
+  ],
   fontSize: 13,
   color: Color(0xFFF7F7F7),
   height: 1.0,
@@ -52,12 +58,13 @@ class _AsciiCanvasState extends State<AsciiCanvas> {
         final selected = _selectedLayoutNode(widget.controller);
         final boardRegions = widget.controller.asciiBoardRegions;
         final zoom = widget.controller.canvasZoom;
+        final devicePixelRatio = MediaQuery.of(context).devicePixelRatio;
         final scaledTextStyle = _canvasTextStyle.copyWith(
           fontSize: (_canvasTextStyle.fontSize ?? 13) * zoom,
         );
         final metrics = _measureCell(scaledTextStyle);
-        final charWidth = metrics.width;
-        final charHeight = metrics.height;
+        final charWidth = _snapToDevicePixel(metrics.width, devicePixelRatio);
+        final charHeight = _snapToDevicePixel(metrics.height, devicePixelRatio);
         final lines = text.split("\n");
         var renderWidthChars = 0;
         for (final line in lines) {
@@ -229,6 +236,7 @@ class _AsciiCanvasState extends State<AsciiCanvas> {
                 textStyle: scaledTextStyle,
                 charWidth: charWidth,
                 charHeight: charHeight,
+                devicePixelRatio: devicePixelRatio,
                 boardRegions: boardRegions,
                 selected: selected?.rect,
                 showResizeHandles: widget.controller.pointerEditMode ==
@@ -301,10 +309,18 @@ class _AsciiCanvasState extends State<AsciiCanvas> {
     )..layout();
 
     final rawWidth = painter.size.width;
-    final rawHeight = painter.size.height;
+    final rawHeight = painter.preferredLineHeight;
     final width = rawWidth <= 0 ? 8.0 : rawWidth;
     final height = rawHeight <= 0 ? 16.0 : rawHeight;
     return _CellMetrics(width: width, height: height);
+  }
+
+  double _snapToDevicePixel(double value, double dpr) {
+    if (value <= 0 || dpr <= 0) {
+      return value <= 0 ? 1.0 : value;
+    }
+    final snapped = (value * dpr).roundToDouble() / dpr;
+    return snapped <= 0 ? 1.0 : snapped;
   }
 
   bool _isEmptyAsciiCell(String ascii, int x, int y) {
@@ -424,6 +440,7 @@ class _AsciiPainter extends CustomPainter {
     required this.textStyle,
     required this.charWidth,
     required this.charHeight,
+    required this.devicePixelRatio,
     required this.boardRegions,
     this.selected,
     required this.showResizeHandles,
@@ -434,6 +451,7 @@ class _AsciiPainter extends CustomPainter {
   final TextStyle textStyle;
   final double charWidth;
   final double charHeight;
+  final double devicePixelRatio;
   final List<RectI> boardRegions;
   final RectI? selected;
   final bool showResizeHandles;
@@ -443,36 +461,54 @@ class _AsciiPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final lines = ascii.split("\n");
     final painter = TextPainter(textDirection: TextDirection.ltr);
+    final snap = _snapper(devicePixelRatio);
 
     final gridPaint = Paint()
       ..color = const Color(0x1EFFFFFF)
-      ..strokeWidth = 1;
+      ..strokeWidth = 1
+      ..isAntiAlias = false;
     final boardBorderPaint = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1
-      ..color = const Color(0x4DFFFFFF);
+      ..color = const Color(0x4DFFFFFF)
+      ..isAntiAlias = false;
 
     if (boardRegions.isEmpty) {
       for (var x = 0.0; x <= size.width; x += charWidth) {
-        canvas.drawLine(Offset(x, 0), Offset(x, size.height), gridPaint);
+        final sx = snap(x);
+        canvas.drawLine(
+          Offset(sx, 0),
+          Offset(sx, snap(size.height)),
+          gridPaint,
+        );
       }
       for (var y = 0.0; y <= size.height; y += charHeight) {
-        canvas.drawLine(Offset(0, y), Offset(size.width, y), gridPaint);
+        final sy = snap(y);
+        canvas.drawLine(
+          Offset(0, sy),
+          Offset(snap(size.width), sy),
+          gridPaint,
+        );
       }
     } else {
       for (final board in boardRegions) {
-        final left = board.x * charWidth;
-        final top = board.y * charHeight;
-        final width = board.width * charWidth;
-        final height = board.height * charHeight;
+        final left = snap(board.x * charWidth);
+        final top = snap(board.y * charHeight);
+        final width = snap(board.width * charWidth);
+        final height = snap(board.height * charHeight);
 
         for (var i = 0; i <= board.width; i++) {
-          final x = left + i * charWidth;
-          canvas.drawLine(Offset(x, top), Offset(x, top + height), gridPaint);
+          final x = snap(left + i * charWidth);
+          canvas.drawLine(
+              Offset(x, top), Offset(x, snap(top + height)), gridPaint);
         }
         for (var i = 0; i <= board.height; i++) {
-          final y = top + i * charHeight;
-          canvas.drawLine(Offset(left, y), Offset(left + width, y), gridPaint);
+          final y = snap(top + i * charHeight);
+          canvas.drawLine(
+            Offset(left, y),
+            Offset(snap(left + width), y),
+            gridPaint,
+          );
         }
 
         canvas.drawRect(
@@ -485,7 +521,7 @@ class _AsciiPainter extends CustomPainter {
     for (var i = 0; i < lines.length; i++) {
       painter.text = TextSpan(text: lines[i], style: textStyle);
       painter.layout();
-      painter.paint(canvas, Offset(0, i * charHeight));
+      painter.paint(canvas, Offset(0, snap(i * charHeight)));
     }
 
     if (selected != null) {
@@ -512,6 +548,13 @@ class _AsciiPainter extends CustomPainter {
         charHeight != oldDelegate.charHeight ||
         showResizeHandles != oldDelegate.showResizeHandles ||
         activeHandle != oldDelegate.activeHandle;
+  }
+
+  double Function(double) _snapper(double dpr) {
+    if (dpr <= 0) {
+      return (v) => v;
+    }
+    return (v) => (v * dpr).roundToDouble() / dpr;
   }
 
   void _drawResizeHandles(Canvas canvas, Rect selectionRect) {

@@ -2,6 +2,8 @@
 
 사람과 LLM이 같은 UI를 공유하기 위한 ASCII 캔버스 편집기 (Flutter Desktop/Web).
 
+Live Demo: https://ittodo.github.io/CanvasTalk/
+
 ## 핵심 컨셉
 
 - 사람은 CanvasTalk 캔버스에서 UI를 직접 설계합니다.
