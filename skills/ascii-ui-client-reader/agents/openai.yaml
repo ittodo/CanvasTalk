@@ -1,0 +1,4 @@
+interface:
+  display_name: "ASCII UI Client Reader"
+  short_description: "Parse ASCII wireframes and map them to client UI components."
+  default_prompt: "Convert provided ASCII canvas and YAML hierarchy into a client UI implementation plan and code."

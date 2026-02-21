@@ -81,3 +81,13 @@ flutter build windows --debug
 flutter analyze
 flutter test
 ```
+
+## Versioned Skill
+
+ASCII -> 클라이언트 UI 구현용 Codex 스킬을 저장소에 함께 버전관리합니다.
+
+- 경로: `skills/ascii-ui-client-reader`
+- 메인 문서: `skills/ascii-ui-client-reader/SKILL.md`
+- kind/props 매핑: `skills/ascii-ui-client-reader/references/flutter-kind-props.md`
+
+필요 시 로컬 Codex 스킬 폴더(`%USERPROFILE%/.codex/skills`)로 복사해 사용할 수 있습니다.
